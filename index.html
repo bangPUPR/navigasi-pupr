@@ -26,8 +26,6 @@
 
         html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; font-family: system-ui, sans-serif; -webkit-tap-highlight-color: transparent; }
 
-        /* PERBAIKAN: KONTROL KAMERA (TAMPAK ATAS 2D) */
-        /* Urutan translateY dan rotateZ harus benar agar peta tidak miring/bergeser saat diputar */
         body:not(.is-navigating) #map {
             transform: translateY(0) rotateZ(var(--map-heading, 0deg));
             transform-origin: center center;
@@ -35,13 +33,11 @@
         }
         
         body.is-navigating #map {
-            /* translateY(20vh) ditaruh DI DEPAN agar fokus user bergeser ke bawah layar, lalu baru diputar */
             transform: translateY(20vh) rotateZ(var(--map-heading, 0deg));
             transform-origin: center center;
             transition: transform 1.5s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
-        /* --- FITUR: MODE MALAM (NIGHT MODE MAPS) --- */
         .map-dark .leaflet-tile-pane {
             filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
         }
@@ -51,7 +47,7 @@
         .animate-fade-in-up { animation: fadeInUp 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards; opacity: 0; }
 
         @keyframes dropIn { 0% { opacity: 0; margin-top: -30px; } 100% { opacity: 1; margin-top: 0; } }
-        .leaflet-marker-icon:not(.user-dot):not(.nav-arrow-container):not(.parkir-icon) { animation: dropIn 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+        .leaflet-marker-icon:not(.user-dot-container):not(.nav-arrow-container):not(.parkir-icon) { animation: dropIn 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
 
         @keyframes shimmer { 0% { background-position: -1000px 0; } 100% { background-position: 1000px 0; } }
         .skeleton {
@@ -61,17 +57,36 @@
             animation: shimmer 1.5s infinite linear; border-radius: 4px;
         }
 
+        /* FITUR: KOMPAS / VIEW CONE */
+        .user-dot-container {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
         .user-dot {
             width: 20px; height: 20px;
             background-color: var(--pu-yellow);
             border: 3px solid var(--pu-blue); border-radius: 50%;
             box-shadow: 0 0 10px rgba(14, 49, 96, 0.6); position: relative;
+            z-index: 2;
         }
         .user-dot::after {
             content: ''; position: absolute; top: -6px; left: -6px; right: -6px; bottom: -6px;
             border: 2px solid var(--pu-yellow); border-radius: 50%;
             animation: pulse 2s infinite; opacity: 0;
         }
+        .view-cone {
+            position: absolute;
+            width: 80px; height: 80px;
+            background: radial-gradient(circle at 50% 100%, rgba(26,115,232,0.4) 0%, rgba(26,115,232,0) 60%);
+            clip-path: polygon(15% 0, 85% 0, 50% 100%);
+            transform-origin: 50% 100%;
+            transform: translateY(-40px) rotate(0deg); /* Diupdate via JS */
+            z-index: 1;
+            transition: transform 0.1s linear;
+        }
+
         @keyframes pulse { 0% { transform: scale(0.5); opacity: 1; } 100% { transform: scale(1.5); opacity: 0; } }
 
         @keyframes routeFlow { 0% { stroke-dashoffset: 50; } 100% { stroke-dashoffset: 0; } }
@@ -109,7 +124,6 @@
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         
-        /* Custom Toast Alert UI */
         #toast-msg {
             transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
             pointer-events: none;
@@ -120,6 +134,17 @@
             opacity: 1;
             transform: translate(-50%, 0);
         }
+
+        .leaflet-bottom.leaflet-left { margin-bottom: 160px; z-index: 900; }
+        @media (min-width: 768px) { .leaflet-bottom.leaflet-left { margin-left: 420px; margin-bottom: 20px; } }
+
+        /* FITUR: Kustomisasi Pop-up Leaflet */
+        .leaflet-popup-content-wrapper { padding: 0 !important; border-radius: 12px !important; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.2) !important; }
+        .leaflet-popup-content { margin: 0 !important; width: 220px !important; }
+        .leaflet-popup-close-button { color: white !important; text-shadow: 0 1px 2px rgba(0,0,0,0.5); }
+        
+        /* FITUR BARU: Hapus background bawaan divIcon Leaflet */
+        .custom-pin-marker { background: transparent; border: none; }
     </style>
 </head>
 <body class="bg-gray-50 text-gray-800">
@@ -169,7 +194,6 @@
                 </div>
 
                 <div class="w-14 flex flex-col items-center justify-center border-l border-gray-100 bg-gray-50/50 shrink-0">
-                    <!-- PERBAIKAN LOGO: Menggunakan High-Res PNG Thumbnail dari Wikimedia agar tidak diblokir GitHub Pages -->
                     <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/d/d3/Lambang_Kabupaten_Garut.png/512px-Lambang_Kabupaten_Garut.png" onerror="this.src='https://upload.wikimedia.org/wikipedia/commons/d/d3/Lambang_Kabupaten_Garut.png'" class="h-7 w-7 object-contain drop-shadow-sm transition-transform hover:scale-110" alt="Logo Garut">
                 </div>
             </div>
@@ -246,40 +270,39 @@
     <script>
         class PuprNavigationApp {
             constructor() {
-                this.PUSAT_KAWASAN = [-7.199388, 107.876491];
+                this.PUSAT_KAWASAN = [-7.199150, 107.876920]; 
                 
+                // FITUR: Data Tambahan untuk Pop-up Panel
                 this.LOCATIONS = [
-                    { id: 'r_rapat_lt2', name: 'R. Rapat PUPR Lt. 2', lat: -7.199195013352128, lng: 107.8764323309565, cat: 'Ruangan' },
-                    { id: 'r_bag_umum', name: 'R. Bagian Umum', lat: -7.199127459053137, lng: 107.8764557388671, cat: 'Ruangan' },
-                    { id: 'r_kadis', name: 'R. Kepala Dinas PUPR', lat: -7.199302999999999, lng: 107.8766727687966, cat: 'Ruangan' },
-                    { id: 'r_sekdis', name: 'R. Sekretaris Dinas PUPR', lat: -7.19921158622008, lng: 107.8765898550731, cat: 'Ruangan' },
-                    { id: 'r_verif_keu', name: 'R. Verifikasi Bagian Keuangan', lat: -7.198981550411356, lng: 107.8766469685958, cat: 'Ruangan' },
-                    { id: 'tugu', name: 'Tugu Dinas PUPR', lat: -7.199445559142169, lng: 107.876497345244, cat: 'Fasilitas' },
-                    { id: 'perpus', name: 'Perpustakaan Dinas PUPR', lat: -7.199297513006006, lng: 107.8767792147685, cat: 'Fasilitas' },
-                    { id: 'toilet_1', name: 'Toilet Umum', lat: -7.199265964781452, lng: 107.8768468857503, cat: 'Fasilitas' },
-                    { id: 'bid_binamarga', name: 'Bid. Bina Marga', lat: -7.199551297191005, lng: 107.8769387354968, cat: 'Bidang' },
-                    { id: 'bid_taru', name: 'Bid. Penataan Ruang', lat: -7.199489275890892, lng: 107.8770918147753, cat: 'Bidang' },
-                    { id: 'kantin_1', name: 'Kantin 1', lat: -7.19953732130551, lng: 107.8770373458637, cat: 'Fasilitas' },
-                    { id: 'kantin_2', name: 'Kantin 2', lat: -7.199077608829382, lng: 107.8774767640371, cat: 'Fasilitas' },
-                    { id: 'r_arsip_lt2', name: 'R. Arsip Dinas Lt. 2', lat: -7.199571428766572, lng: 107.8771080438699, cat: 'Ruangan' },
-                    { id: 'r_rapat_simbg', name: 'R. Rapat Konsultasi SIMBG Lt. 2', lat: -7.199490160788607, lng: 107.877425504076, cat: 'Ruangan' },
-                    { id: 'gd_arsip', name: 'Gedung Arsip', lat: -7.199362587533257, lng: 107.8773825030212, cat: 'Gedung' },
-                    { id: 'mushala', name: 'Mushala', lat: -7.19922280465217, lng: 107.8774439325401, cat: 'Fasilitas' },
-                    { id: 'toilet_2', name: 'Toilet Umum 2', lat: -7.199311376480947, lng: 107.8775701923217, cat: 'Fasilitas' },
-                    { id: 'r_rapat_sda', name: 'R. Rapat SDA', lat: -7.198999129148875, lng: 107.8773964440981, cat: 'Ruangan' },
-                    { id: 'r_komir', name: 'R. KOMIR', lat: -7.198873101003608, lng: 107.8773937452003, cat: 'Ruangan' },
-                    { id: 'bid_sda', name: 'Bid. SDA', lat: -7.199126475400946, lng: 107.8771628734081, cat: 'Bidang' },
-                    { id: 'bid_jaskon', name: 'Bid. Jasa Konstruksi', lat: -7.19892215200717, lng: 107.8771860420221, cat: 'Bidang' },
-                    { id: 'bid_bangunan', name: 'Bid. Bangunan', lat: -7.198754893561037, lng: 107.8771719225849, cat: 'Bidang' },
-                    { id: 'bid_amplp', name: 'Bid. AMPLP', lat: -7.19871964286781, lng: 107.8769446049371, cat: 'Bidang' },
-                    { id: 'upt_targid', name: 'UPT Tarogong Kidul', lat: -7.199765390998546, lng: 107.8766489100545, cat: 'UPT' },
-                    { id: 'upt_targal', name: 'UPT Tarogong Kaler', lat: -7.199840707166941, lng: 107.8766498235686, cat: 'UPT' },
-                    { id: 'upt_lab', name: 'UPT Laboratorium dan Pengujian', lat: -7.199750553017148, lng: 107.8769679082552, cat: 'UPT' },
-                    { id: 'lapangan', name: 'Lapangan Sepak Bola PUPR', lat: -7.200010579684227, lng: 107.8771985954403, cat: 'Fasilitas' },
-                    { id: 'gerbang_2', name: 'Gerbang 2', lat: -7.198472501839531, lng: 107.876934788547, cat: 'Gerbang' },
-                    { id: 'gerbang_3', name: 'Gerbang 3', lat: -7.200273371844594, lng: 107.8768400902341, cat: 'Gerbang' },
-                    { id: 'titik_1', name: 'TITIK PUPR 1', lat: -7.199388, lng: 107.876491, cat: 'Titik Acuan' },
-                    { id: 'titik_2', name: 'TITIK PUPR 2', lat: -7.198703693159714, lng: 107.8773197790697, cat: 'Titik Acuan' }
+                    { id: 'r_rapat_lt2', name: 'R. Rapat PUPR Lt. 2', lat: -7.199195013352128, lng: 107.8764323309565, cat: 'Ruangan', floor: 'Lantai 2', hours: '08:00 - 16:00', img: 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=300&q=80' },
+                    { id: 'r_bag_umum', name: 'R. Bagian Umum', lat: -7.199127459053137, lng: 107.8764557388671, cat: 'Ruangan', floor: 'Lantai 1', hours: '08:00 - 16:00', img: 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=300&q=80' },
+                    { id: 'r_kadis', name: 'R. Kepala Dinas PUPR', lat: -7.199302999999999, lng: 107.8766727687966, cat: 'Ruangan', floor: 'Lantai 1', hours: 'Sesuai Janji Temu', img: 'https://images.unsplash.com/photo-1572025442646-3336eaa44c1e?w=300&q=80' },
+                    { id: 'r_sekdis', name: 'R. Sekretaris Dinas PUPR', lat: -7.19921158622008, lng: 107.8765898550731, cat: 'Ruangan', floor: 'Lantai 1', hours: '08:00 - 16:00', img: 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=300&q=80' },
+                    { id: 'r_verif_keu', name: 'R. Verifikasi Bagian Keuangan', lat: -7.198981550411356, lng: 107.8766469685958, cat: 'Ruangan', floor: 'Lantai 1', hours: '08:00 - 15:00', img: 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=300&q=80' },
+                    { id: 'tugu', name: 'Tugu Dinas PUPR', lat: -7.199445559142169, lng: 107.876497345244, cat: 'Fasilitas', floor: 'Outdoor', hours: '24 Jam', img: 'https://images.unsplash.com/photo-1519817914152-2a67302ea2a1?w=300&q=80' },
+                    { id: 'perpus', name: 'Perpustakaan Dinas PUPR', lat: -7.199297513006006, lng: 107.8767792147685, cat: 'Fasilitas', floor: 'Lantai 1', hours: '09:00 - 15:00', img: 'https://images.unsplash.com/photo-1521587760476-6c12a4b040da?w=300&q=80' },
+                    { id: 'toilet_1', name: 'Toilet Umum', lat: -7.199265964781452, lng: 107.8768468857503, cat: 'Fasilitas', floor: 'Lantai 1', hours: '24 Jam', img: 'https://images.unsplash.com/photo-1620626011761-996317b8d101?w=300&q=80' },
+                    { id: 'bid_binamarga', name: 'Bid. Bina Marga', lat: -7.199551297191005, lng: 107.8769387354968, cat: 'Bidang', floor: 'Lantai 1', hours: '08:00 - 16:00', img: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=300&q=80' },
+                    { id: 'bid_taru', name: 'Bid. Penataan Ruang', lat: -7.199489275890892, lng: 107.8770918147753, cat: 'Bidang', floor: 'Lantai 1', hours: '08:00 - 16:00', img: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=300&q=80' },
+                    { id: 'kantin_1', name: 'Kantin 1', lat: -7.19953732130551, lng: 107.8770373458637, cat: 'Fasilitas', floor: 'Outdoor', hours: '07:00 - 17:00', img: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=300&q=80' },
+                    { id: 'kantin_2', name: 'Kantin 2', lat: -7.199077608829382, lng: 107.8774767640371, cat: 'Fasilitas', floor: 'Outdoor', hours: '07:00 - 17:00', img: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=300&q=80' },
+                    { id: 'r_arsip_lt2', name: 'R. Arsip Dinas Lt. 2', lat: -7.199571428766572, lng: 107.8771080438699, cat: 'Ruangan', floor: 'Lantai 2', hours: '08:00 - 16:00', img: 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=300&q=80' },
+                    { id: 'r_rapat_simbg', name: 'R. Rapat Konsultasi SIMBG Lt. 2', lat: -7.199490160788607, lng: 107.877425504076, cat: 'Ruangan', floor: 'Lantai 2', hours: '08:00 - 16:00', img: 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=300&q=80' },
+                    { id: 'gd_arsip', name: 'Gedung Arsip', lat: -7.199362587533257, lng: 107.8773825030212, cat: 'Gedung', floor: 'Lantai 1-2', hours: '08:00 - 16:00', img: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=300&q=80' },
+                    { id: 'mushala', name: 'Mushala', lat: -7.19922280465217, lng: 107.8774439325401, cat: 'Fasilitas', floor: 'Lantai 1', hours: '24 Jam', img: 'https://images.unsplash.com/photo-1519817914152-2a67302ea2a1?w=300&q=80' },
+                    { id: 'toilet_2', name: 'Toilet Umum 2', lat: -7.199311376480947, lng: 107.8775701923217, cat: 'Fasilitas', floor: 'Lantai 1', hours: '24 Jam', img: 'https://images.unsplash.com/photo-1620626011761-996317b8d101?w=300&q=80' },
+                    { id: 'r_rapat_sda', name: 'R. Rapat SDA', lat: -7.198999129148875, lng: 107.8773964440981, cat: 'Ruangan', floor: 'Lantai 1', hours: '08:00 - 16:00', img: 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=300&q=80' },
+                    { id: 'r_komir', name: 'R. KOMIR', lat: -7.198873101003608, lng: 107.8773937452003, cat: 'Ruangan', floor: 'Lantai 1', hours: '08:00 - 16:00', img: 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=300&q=80' },
+                    { id: 'bid_sda', name: 'Bid. SDA', lat: -7.199126475400946, lng: 107.8771628734081, cat: 'Bidang', floor: 'Lantai 1', hours: '08:00 - 16:00', img: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=300&q=80' },
+                    { id: 'bid_jaskon', name: 'Bid. Jasa Konstruksi', lat: -7.19892215200717, lng: 107.8771860420221, cat: 'Bidang', floor: 'Lantai 1', hours: '08:00 - 16:00', img: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=300&q=80' },
+                    { id: 'bid_bangunan', name: 'Bid. Bangunan', lat: -7.198754893561037, lng: 107.8771719225849, cat: 'Bidang', floor: 'Lantai 1', hours: '08:00 - 16:00', img: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=300&q=80' },
+                    { id: 'bid_amplp', name: 'Bid. AMPLP', lat: -7.19871964286781, lng: 107.8769446049371, cat: 'Bidang', floor: 'Lantai 1', hours: '08:00 - 16:00', img: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=300&q=80' },
+                    { id: 'upt_targid', name: 'UPT Tarogong Kidul', lat: -7.199765390998546, lng: 107.8766489100545, cat: 'UPT', floor: 'Lantai 1', hours: '08:00 - 16:00', img: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=300&q=80' },
+                    { id: 'upt_targal', name: 'UPT Tarogong Kaler', lat: -7.199840707166941, lng: 107.8766498235686, cat: 'UPT', floor: 'Lantai 1', hours: '08:00 - 16:00', img: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=300&q=80' },
+                    { id: 'upt_lab', name: 'UPT Laboratorium dan Pengujian', lat: -7.199750553017148, lng: 107.8769679082552, cat: 'UPT', floor: 'Lantai 1', hours: '08:00 - 16:00', img: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=300&q=80' },
+                    { id: 'lapangan', name: 'Lapangan Sepak Bola PUPR', lat: -7.200010579684227, lng: 107.8771985954403, cat: 'Fasilitas', floor: 'Outdoor', hours: '06:00 - 18:00', img: 'https://images.unsplash.com/photo-1519817914152-2a67302ea2a1?w=300&q=80' },
+                    { id: 'gerbang_2', name: 'Gerbang 2', lat: -7.198472501839531, lng: 107.876934788547, cat: 'Gerbang', floor: 'Outdoor', hours: '24 Jam', img: 'https://images.unsplash.com/photo-1519817914152-2a67302ea2a1?w=300&q=80' },
+                    { id: 'gerbang_3', name: 'Gerbang 3', lat: -7.200273371844594, lng: 107.8768400902341, cat: 'Gerbang', floor: 'Outdoor', hours: '24 Jam', img: 'https://images.unsplash.com/photo-1519817914152-2a67302ea2a1?w=300&q=80' }
                 ];
 
                 this.PARKIRAN = [
@@ -329,7 +352,11 @@
                     isManualStart: false,
                     manualStartTarget: null,
                     isCameraLocked: true,
-                    lastOffRouteWarn: 0
+                    lastOffRouteWarn: 0,
+                    
+                    // FITUR BARU: Variabel untuk belokan dan kompas
+                    turnInstructions: [],
+                    compassHeading: 0 
                 };
 
                 this.DOM = {
@@ -359,8 +386,15 @@
             }
 
             init() {
+                // FITUR BARU: Ikon titik biru dengan Sinar Kompas
                 this.icons = {
-                    idle: L.divIcon({ className: 'user-dot', iconSize: [20, 20], zIndexOffset: 1000 }),
+                    idle: L.divIcon({ 
+                        className: 'user-dot-container', 
+                        html: `<div class="view-cone" id="user-view-cone"></div><div class="user-dot"></div>`,
+                        iconSize: [80, 80], 
+                        iconAnchor: [40, 40],
+                        zIndexOffset: 1000 
+                    }),
                     navigating: L.divIcon({
                         className: 'nav-arrow-container',
                         html: `<svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" class="nav-arrow-svg">
@@ -385,6 +419,48 @@
                 this.setupEventListeners();
                 this.unlockAudioEngine(); 
                 this.requestGeolocation();
+                
+                // FITUR BARU: Mengecek Parameter URL
+                this.checkUrlParams();
+            }
+
+            // FITUR BARU: Auto-Select Target dari URL Parameter (Misal: ?tujuan=r_kadis)
+            checkUrlParams() {
+                const params = new URLSearchParams(window.location.search);
+                const targetId = params.get('tujuan');
+                if (targetId) {
+                    setTimeout(() => {
+                        this.handleLocationSelect(targetId);
+                    }, 800);
+                }
+            }
+
+            // FITUR BARU: Meminta izin Sensor Kompas (Penting untuk iOS/iPhone)
+            requestDeviceOrientation() {
+                if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                    DeviceOrientationEvent.requestPermission()
+                        .then(permissionState => {
+                            if (permissionState === 'granted') {
+                                window.addEventListener('deviceorientation', this.handleCompass.bind(this), true);
+                            }
+                        }).catch(console.error);
+                } else {
+                    // Android & Browser biasa
+                    window.addEventListener('deviceorientationabsolute', this.handleCompass.bind(this), true);
+                    window.addEventListener('deviceorientation', this.handleCompass.bind(this), true);
+                }
+            }
+
+            handleCompass(e) {
+                let compass = e.webkitCompassHeading || Math.abs(e.alpha - 360);
+                if (compass) {
+                    this.state.compassHeading = compass;
+                    const cone = document.getElementById('user-view-cone');
+                    if (cone) {
+                        // Putar kerucut berlawanan arah agar sesuai pandangan pengguna
+                        cone.style.transform = `translateY(-40px) rotate(${compass}deg)`;
+                    }
+                }
             }
 
             unlockAudioEngine() {
@@ -563,16 +639,122 @@
                 return pathSegments;
             }
 
+            // FITUR BARU: Fungsi pembuat marker custom berdasarkan kategori
+            createCustomMarker(type) {
+                let iconStr = '📍';
+                let colorClass = 'bg-[#0e3160]';
+                let tailColor = 'border-t-[#0e3160]';
+
+                if (type === 'Kantin') { iconStr = '☕'; colorClass = 'bg-[#d97706]'; tailColor = 'border-t-[#d97706]'; }
+                else if (type === 'Mushala') { iconStr = '🕌'; colorClass = 'bg-[#10b981]'; tailColor = 'border-t-[#10b981]'; }
+                else if (type === 'Toilet') { iconStr = '🚻'; colorClass = 'bg-[#0ea5e9]'; tailColor = 'border-t-[#0ea5e9]'; }
+                else if (type === 'Perpus') { iconStr = '📚'; colorClass = 'bg-[#6366f1]'; tailColor = 'border-t-[#6366f1]'; }
+                else if (type === 'Gerbang') { iconStr = '🚪'; colorClass = 'bg-[#ef4444]'; tailColor = 'border-t-[#ef4444]'; }
+                else if (type === 'ParkirMobil') { iconStr = '🚗'; colorClass = 'bg-[#3b82f6]'; tailColor = 'border-t-[#3b82f6]'; }
+                else if (type === 'ParkirMotor') { iconStr = '🏍️'; colorClass = 'bg-[#8b5cf6]'; tailColor = 'border-t-[#8b5cf6]'; }
+                else if (type === 'Gedung' || type === 'Ruangan' || type === 'Bidang' || type === 'UPT') { iconStr = '🏢'; colorClass = 'bg-[#0e3160]'; tailColor = 'border-t-[#0e3160]'; }
+                else { iconStr = '📍'; colorClass = 'bg-gray-600'; tailColor = 'border-t-gray-600'; }
+
+                const html = `
+                    <div class="relative flex items-center justify-center w-8 h-8 rounded-full border-[2.5px] border-white shadow-md ${colorClass} hover:scale-110 transition-transform z-10">
+                        <span class="text-sm leading-none drop-shadow-sm">${iconStr}</span>
+                        <!-- Segitiga lancip di bawah lingkaran -->
+                        <div class="absolute -bottom-2 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-r-[6px] border-t-[8px] border-l-transparent border-r-transparent ${tailColor}"></div>
+                    </div>
+                `;
+
+                return L.divIcon({
+                    className: 'custom-pin-marker',
+                    html: html,
+                    iconSize: [32, 40],
+                    iconAnchor: [16, 40],
+                    popupAnchor: [0, -40] // Menyesuaikan agar pop-up muncul pas di atas marker
+                });
+            }
+
+            // FITUR BARU: Pembuat HTML Pop-Up Leaflet
+            generatePopupHTML(loc) {
+                return `
+                    <div class="w-[220px] pb-1">
+                        <img src="${loc.img}" alt="${loc.name}" class="w-full h-[100px] object-cover rounded-t-[12px] m-0" onerror="this.src='https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=300&q=80'">
+                        <div class="p-3 bg-white rounded-b-[12px]">
+                            <h3 class="font-bold text-[#0e3160] text-[15px] leading-tight mb-1">${loc.name}</h3>
+                            <div class="flex items-center gap-1 text-gray-500 text-[11px] mb-1">
+                                <span>📍</span> ${loc.floor}
+                            </div>
+                            <div class="flex items-center gap-1 text-gray-500 text-[11px] mb-3">
+                                <span>🕒</span> ${loc.hours}
+                            </div>
+                            <button onclick="window.puprApp.handleLocationSelect('${loc.id}')" class="w-full bg-[#15803d] hover:bg-green-700 text-white font-bold py-1.5 rounded-lg text-xs shadow-sm transition-colors cursor-pointer">
+                                Arahkan ke Sini
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }
+
             setupMap() {
-                this.state.map = L.map('map', { zoomControl: false, attributionControl: false }).setView(this.state.userPos, 19);
-                L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', { maxZoom: 22, subdomains: ['mt0', 'mt1', 'mt2', 'mt3'], keepBuffer: 8, updateWhenIdle: false }).addTo(this.state.map);
+                const googleStreets = L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', { 
+                    maxZoom: 22, subdomains: ['mt0', 'mt1', 'mt2', 'mt3'], keepBuffer: 8, updateWhenIdle: false 
+                });
+
+                const googleSatellite = L.tileLayer('https://{s}.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}', { 
+                    maxZoom: 22, subdomains: ['mt0', 'mt1', 'mt2', 'mt3'], keepBuffer: 8, updateWhenIdle: false 
+                });
+
+                const openStreetMap = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { 
+                    maxZoom: 22, 
+                    maxNativeZoom: 19, 
+                    attribution: '© OpenStreetMap contributors', 
+                    keepBuffer: 8, 
+                    updateWhenIdle: false 
+                });
+
+                this.state.map = L.map('map', { 
+                    zoomControl: false, 
+                    attributionControl: false,
+                    zoomSnap: 0.5,
+                    layers: [openStreetMap] 
+                }).setView(this.state.userPos, 20);
+                
+                const baseMaps = {
+                    "OpenStreetMap": openStreetMap,
+                    "Google Maps": googleStreets,
+                    "Satelit Google": googleSatellite
+                };
+                L.control.layers(baseMaps, null, { position: 'bottomleft' }).addTo(this.state.map);
+
                 this.state.userMarker = L.marker(this.state.userPos, { icon: this.icons.idle }).addTo(this.state.map);
 
-                const pinkIcon = L.icon({ iconUrl: 'http://maps.google.com/mapfiles/kml/paddle/pink-blank.png', iconSize: [32, 32], iconAnchor: [16, 32], tooltipAnchor: [0, -32] });
-
+                // PERBAIKAN: Mengganti marker pink default dengan marker custom kategori
                 this.LOCATIONS.forEach(loc => {
-                    L.marker([loc.lat, loc.lng], { icon: pinkIcon }).addTo(this.state.map)
-                      .bindTooltip(loc.name, { permanent: false, direction: 'top', className: 'font-semibold text-sm text-[#0e3160] border-2 border-[#facc15]' });
+                    let iconType = loc.cat;
+                    if (loc.name.includes('Kantin')) iconType = 'Kantin';
+                    else if (loc.name.includes('Mushala')) iconType = 'Mushala';
+                    else if (loc.name.includes('Toilet')) iconType = 'Toilet';
+                    else if (loc.name.includes('Perpus')) iconType = 'Perpus';
+
+                    L.marker([loc.lat, loc.lng], { icon: this.createCustomMarker(iconType) }).addTo(this.state.map)
+                      .bindPopup(this.generatePopupHTML(loc), { closeButton: true, autoClose: false });
+                });
+
+                // FITUR BARU: Menampilkan semua titik Parkiran di Peta secara permanen
+                this.PARKIRAN.forEach(park => {
+                    let iconType = park.type === 'mobil' ? 'ParkirMobil' : 'ParkirMotor';
+                    
+                    const parkLoc = {
+                        id: park.id, 
+                        name: park.name, 
+                        lat: park.lat, 
+                        lng: park.lng,
+                        cat: 'Parkiran', 
+                        floor: 'Outdoor', 
+                        hours: 'Jam Kerja', 
+                        img: 'https://images.unsplash.com/photo-1506521781263-d8422e82f27a?w=300&q=80' // Gambar ilustrasi parkir
+                    };
+
+                    L.marker([park.lat, park.lng], { icon: this.createCustomMarker(iconType) }).addTo(this.state.map)
+                      .bindPopup(this.generatePopupHTML(parkLoc), { closeButton: true, autoClose: false });
                 });
             }
 
@@ -638,6 +820,8 @@
                 const target = this.LOCATIONS.find(p => p.id === id);
                 if (!target || (this.state.currentTarget && this.state.currentTarget.id === target.id)) return;
 
+                this.state.map.closePopup(); // Tutup popup jika ada yang terbuka
+
                 this.state.currentTarget = target;
                 this.DOM.selectTujuan.value = id; 
                 this.DOM.selectTujuan.blur();
@@ -649,19 +833,48 @@
                     this.state.isManualStart = false;
                     this.state.manualStartTarget = null;
                     this.state.userMarker.setLatLng(this.state.userPos); 
-                    this.state.map.flyTo(this.state.userPos, 19, { animate: true });
+                    this.state.map.flyTo(this.state.userPos, 20, { animate: true }); 
                 } else {
                     this.state.isManualStart = true;
                     this.state.manualStartTarget = this.LOCATIONS.find(p => p.id === id);
                     if (this.state.manualStartTarget) {
                         const manualPos = [this.state.manualStartTarget.lat, this.state.manualStartTarget.lng];
                         this.state.userMarker.setLatLng(manualPos); 
-                        this.state.map.flyTo(manualPos, 19, { animate: true });
+                        this.state.map.flyTo(manualPos, 20, { animate: true }); 
                     }
                 }
                 
                 this.DOM.selectAsal.blur();
                 if (this.state.currentTarget) this.calculateCustomRoute(); 
+            }
+
+            // FITUR BARU: Menganalisis Titik Belokan
+            analyzeTurns(pathSegments, targetLngLat) {
+                this.state.turnInstructions = [];
+                for (let i = 0; i < pathSegments.length - 1; i++) {
+                    const seg1 = pathSegments[i];
+                    const seg2 = pathSegments[i+1];
+                    
+                    const pt1 = turf.point([seg1.start[1], seg1.start[0]]);
+                    const pt2 = turf.point([seg1.end[1], seg1.end[0]]);
+                    const pt3 = turf.point([seg2.end[1], seg2.end[0]]);
+
+                    const b1 = turf.bearing(pt1, pt2);
+                    const b2 = turf.bearing(pt2, pt3);
+                    let diff = (b2 - b1 + 360) % 360;
+                    
+                    let turnType = null;
+                    if (diff > 25 && diff < 155) turnType = 'kanan';
+                    else if (diff > 205 && diff < 335) turnType = 'kiri';
+
+                    if (turnType) {
+                        // Hanya masukkan jika jarak belokan dari tujuan masih cukup jauh
+                        const distToTarget = turf.distance(pt2, turf.point([targetLngLat[0], targetLngLat[1]]), {units: 'meters'});
+                        if(distToTarget > 15) {
+                            this.state.turnInstructions.push({ coord: seg1.end, type: turnType, announced: false });
+                        }
+                    }
+                }
             }
 
             calculateCustomRoute(isSilent = false) {
@@ -741,6 +954,8 @@
                     }
 
                     this.state.currentRouteSegments = shortestPath;
+                    this.analyzeTurns(shortestPath, targetLngLat); // Kalkulasi Titik Belokan Suara
+                    
                     this.drawCustomRoute(shortestPath, isSilent);
                     this.renderCustomRouteInfo(shortestPath, isSilent);
                 }, isSilent ? 0 : 100); 
@@ -788,7 +1003,6 @@
                     this.state.routeLayers.push(parkMarker);
                 }
 
-                // PERBAIKAN: Mencegah zoom out jika fitur Navigasi sudah berjalan
                 if (allCoords.length > 0 && !isSilent && !this.state.isNavigating) {
                     const isDesktop = window.innerWidth >= 768;
                     this.state.map.fitBounds(L.latLngBounds(allCoords), { 
@@ -872,12 +1086,26 @@
                 const targetPt = turf.point([this.state.currentTarget.lng, this.state.currentTarget.lat]);
                 const distToTarget = turf.distance(userPt, targetPt, {units: 'meters'});
 
+                // 1. Cek Sampai Tujuan
                 if (distToTarget <= 15) {
                     this.speak(`Anda telah sampai di ${this.state.currentTarget.name}. Navigasi diakhiri.`);
                     this.stopNavigation();
                     return;
                 }
+                
+                // FITUR BARU: Cek Instruksi Belokan Terdekat
+                if (this.state.turnInstructions.length > 0) {
+                    const nextTurn = this.state.turnInstructions.find(t => !t.announced);
+                    if (nextTurn) {
+                        const distToTurn = turf.distance(userPt, turf.point([nextTurn.coord[1], nextTurn.coord[0]]), {units:'meters'});
+                        if (distToTurn < 15) { // Jika kurang dari 15 meter dari belokan
+                            this.speak(`Persiapkan diri, belok ${nextTurn.type} di depan.`);
+                            nextTurn.announced = true;
+                        }
+                    }
+                }
 
+                // 2. Cek Off-Route
                 const routeCoords = [];
                 this.state.currentRouteSegments.forEach(seg => {
                     routeCoords.push([seg.start[1], seg.start[0]]);
@@ -906,7 +1134,6 @@
                 }
             }
 
-            // PERBAIKAN: Fungsi penentu sudut pandang jalan
             getHeadingTarget(currentPos) {
                 if (!this.state.currentRouteSegments || this.state.currentRouteSegments.length === 0) {
                     return [this.state.currentTarget.lat, this.state.currentTarget.lng];
@@ -921,7 +1148,7 @@
                         {units: 'meters'}
                     );
                     
-                    if (dist > 5) { // Cari titik di rute yang minimal berjarak 5 meter ke depan untuk pedoman arah
+                    if (dist > 5) { 
                         targetPos = segEnd;
                         break;
                     }
@@ -969,8 +1196,6 @@
                 this.state.userMarker.setIcon(this.icons.navigating);
                 
                 const actualStartPos = this.state.isManualStart ? [this.state.manualStartTarget.lat, this.state.manualStartTarget.lng] : this.state.userPos;
-                
-                // MENGGUNAKAN LOGIKA PENGHITUNG SUDUT BARU
                 let targetPos = this.getHeadingTarget(actualStartPos);
                 
                 this.updateMapHeading(actualStartPos, targetPos);
@@ -986,6 +1211,7 @@
                 this.updateSheetState('closed');
                 this.DOM.selectTujuan.value = "";
                 this.state.currentTarget = null;
+                this.state.turnInstructions = [];
                 
                 this.state.isCameraLocked = true;
                 this.DOM.btnRecenter.classList.add('hidden');
@@ -1000,7 +1226,7 @@
                 this.state.userMarker.setIcon(this.icons.idle);
                 
                 const actualStartPos = this.state.isManualStart ? [this.state.manualStartTarget.lat, this.state.manualStartTarget.lng] : this.PUSAT_KAWASAN;
-                this.state.map.flyTo(actualStartPos, 19, { animate: true, duration: 1.5 });
+                this.state.map.flyTo(actualStartPos, 20, { animate: true, duration: 1.5 }); 
                 
                 if ('speechSynthesis' in window) window.speechSynthesis.cancel();
             }
@@ -1029,7 +1255,6 @@
                         this.state.userPos = newPos;
                         if (!this.state.isManualStart) {
                             this.state.userMarker.setLatLng(newPos);
-                            this.state.map.setView(newPos, 19); 
                         }
                         this.DOM.btnLocation.classList.add('text-[#1a73e8]');
                         this.DOM.btnLocation.classList.remove('text-red-500');
@@ -1059,8 +1284,6 @@
                         if (this.state.isNavigating && this.state.currentTarget && !this.state.isManualStart) {
                             if (this.state.isCameraLocked) {
                                 this.state.map.panTo(newPos, { animate: true, duration: 1 });
-                                
-                                // MENGGUNAKAN LOGIKA PENGHITUNG SUDUT BARU UNTUK REALTIME TRACKING
                                 let targetPos = this.getHeadingTarget(newPos);
                                 this.updateMapHeading(newPos, targetPos);
                             }
@@ -1077,6 +1300,9 @@
             }
 
             focusUserLocation() { 
+                // Minta izin Kompas tiap kali tombol GPS diklik
+                this.requestDeviceOrientation();
+
                 if (this.state.isManualStart) {
                     this.state.map.flyTo([this.state.manualStartTarget.lat, this.state.manualStartTarget.lng], 20, { animate: true, duration: 1 });
                     return;
@@ -1095,9 +1321,9 @@
                     },
                     (err) => {
                         if(err.code === 1) {
-                            this.showToast("Izin GPS ditolak oleh Browser/Google Sites. Gunakan mode manual.", "error");
+                            this.showToast("Izin GPS ditolak oleh Browser.", "error");
                         } else {
-                            this.showToast("Gagal mendapat sinyal GPS. Coba di area terbuka.", "error");
+                            this.showToast("Gagal mendapat sinyal GPS.", "error");
                         }
                     },
                     { enableHighAccuracy: true }
