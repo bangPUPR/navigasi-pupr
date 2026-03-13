@@ -26,20 +26,22 @@
 
         html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; font-family: system-ui, sans-serif; -webkit-tap-highlight-color: transparent; }
 
-        /* KONTROL KAMERA (TAMPAK ATAS 2D DENGAN ROTASI ARAH HP) */
+        /* PERBAIKAN: KONTROL KAMERA (TAMPAK ATAS 2D) */
+        /* Urutan translateY dan rotateZ harus benar agar peta tidak miring/bergeser saat diputar */
         body:not(.is-navigating) #map {
-            transform: rotateZ(var(--map-heading, 0deg)) translateY(0);
+            transform: translateY(0) rotateZ(var(--map-heading, 0deg));
             transform-origin: center center;
             transition: transform 1.5s cubic-bezier(0.4, 0, 0.2, 1);
         }
         
         body.is-navigating #map {
-            transform: rotateZ(var(--map-heading, 0deg)) translateY(20vh);
+            /* translateY(20vh) ditaruh DI DEPAN agar fokus user bergeser ke bawah layar, lalu baru diputar */
+            transform: translateY(20vh) rotateZ(var(--map-heading, 0deg));
             transform-origin: center center;
             transition: transform 1.5s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
-        /* --- FITUR BARU: MODE MALAM (NIGHT MODE MAPS) --- */
+        /* --- FITUR: MODE MALAM (NIGHT MODE MAPS) --- */
         .map-dark .leaflet-tile-pane {
             filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
         }
@@ -107,7 +109,7 @@
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         
-        /* FITUR BARU: Custom Toast Alert untuk menggantikan fungsi alert() yang diblokir iframe */
+        /* Custom Toast Alert UI */
         #toast-msg {
             transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
             pointer-events: none;
@@ -122,7 +124,6 @@
 </head>
 <body class="bg-gray-50 text-gray-800">
 
-    <!-- FITUR BARU: Custom Toast Alert UI -->
     <div id="toast-msg" class="fixed top-20 md:top-24 left-1/2 z-[3000] px-6 py-3 rounded-full text-sm font-bold text-center shadow-lg w-max max-w-[90vw]">
         Pesan Notifikasi
     </div>
@@ -136,7 +137,6 @@
                 </svg>
             </div>
             <div class="flex-1 min-w-0">
-                <!-- Teks ini bisa berkedip merah jika keluar jalur -->
                 <p id="top-instruction" class="text-xl font-bold leading-tight truncate transition-colors duration-300" aria-live="polite">Mencari rute...</p>
                 <p id="top-distance" class="text-sm text-[#facc15] font-semibold truncate">--</p>
             </div>
@@ -169,7 +169,7 @@
                 </div>
 
                 <div class="w-14 flex flex-col items-center justify-center border-l border-gray-100 bg-gray-50/50 shrink-0">
-                    <img src="https://upload.wikimedia.org/wikipedia/commons/d/d3/Lambang_Kabupaten_Garut.png" class="h-7 w-7 object-contain drop-shadow-sm transition-transform hover:scale-110" alt="Logo Garut">
+                    <img src="https://upload.wikimedia.org/wikipedia/commons/d/d4/Lambang_Kabupaten_Garut.svg" class="h-7 w-7 object-contain drop-shadow-sm transition-transform hover:scale-110" alt="Logo Garut">
                 </div>
             </div>
             
@@ -328,7 +328,7 @@
                     isManualStart: false,
                     manualStartTarget: null,
                     isCameraLocked: true,
-                    lastOffRouteWarn: 0 // Jeda peringatan salah jalur
+                    lastOffRouteWarn: 0
                 };
 
                 this.DOM = {
@@ -351,7 +351,7 @@
                     btnModeMotor: document.getElementById('btn-mode-motor'),
                     btnModeMobil: document.getElementById('btn-mode-mobil'),
                     btnRecenter: document.getElementById('btn-recenter'),
-                    toast: document.getElementById('toast-msg') // DOM Toast Baru
+                    toast: document.getElementById('toast-msg')
                 };
 
                 this.init();
@@ -377,16 +377,15 @@
                     })
                 };
 
-                this.checkDarkMode(); // Cek jam untuk aktifkan mode malam
+                this.checkDarkMode(); 
                 this.setupMap();
                 this.buildRoutingGraph(); 
                 this.populateDropdown();
                 this.setupEventListeners();
-                this.unlockAudioEngine(); // Pancing Audio Engine
+                this.unlockAudioEngine(); 
                 this.requestGeolocation();
             }
 
-            // FITUR BARU: Membuka kunci Autoplay Audio di dalam iFrame
             unlockAudioEngine() {
                 const unlock = () => {
                     const msg = new SpeechSynthesisUtterance('');
@@ -398,7 +397,6 @@
                 document.addEventListener('click', unlock, { once: true });
             }
 
-            // FITUR BARU: Custom Alert yang tidak akan diblokir Google Sites
             showToast(message, type = 'error') {
                 this.DOM.toast.textContent = message;
                 if (type === 'error') {
@@ -417,7 +415,6 @@
                 const hour = new Date().getHours();
                 if (hour >= 18 || hour < 6) {
                     document.documentElement.classList.add('dark-theme-active');
-                    // Tunggu map dimuat, lalu tambahkan class filter invert ke petanya
                     setTimeout(() => {
                         const mapElem = document.getElementById('map');
                         if(mapElem) mapElem.classList.add('map-dark');
@@ -790,7 +787,8 @@
                     this.state.routeLayers.push(parkMarker);
                 }
 
-                if (allCoords.length > 0 && !isSilent) {
+                // PERBAIKAN: Mencegah zoom out jika fitur Navigasi sudah berjalan
+                if (allCoords.length > 0 && !isSilent && !this.state.isNavigating) {
                     const isDesktop = window.innerWidth >= 768;
                     this.state.map.fitBounds(L.latLngBounds(allCoords), { 
                         paddingTopLeft: [50, 50],
@@ -866,7 +864,6 @@
                 }
             }
 
-            // FITUR BARU: Deteksi Peringatan Keluar Jalur & Tiba di Tujuan
             checkRouteStatus(newPos) {
                 if (!this.state.currentRouteSegments || this.state.currentRouteSegments.length === 0) return;
 
@@ -874,14 +871,12 @@
                 const targetPt = turf.point([this.state.currentTarget.lng, this.state.currentTarget.lat]);
                 const distToTarget = turf.distance(userPt, targetPt, {units: 'meters'});
 
-                // 1. Cek jika sudah sangat dekat dengan tujuan (berhenti otomatis)
                 if (distToTarget <= 15) {
                     this.speak(`Anda telah sampai di ${this.state.currentTarget.name}. Navigasi diakhiri.`);
                     this.stopNavigation();
                     return;
                 }
 
-                // 2. Cek Off-Route (Nyasar / Melenceng dari Garis)
                 const routeCoords = [];
                 this.state.currentRouteSegments.forEach(seg => {
                     routeCoords.push([seg.start[1], seg.start[0]]);
@@ -892,14 +887,11 @@
                     const routeLine = turf.lineString(routeCoords);
                     const distToRoute = turf.pointToLineDistance(userPt, routeLine, {units: 'meters'});
 
-                    // Toleransi melenceng 20 meter dari jalan
                     if (distToRoute > 20) {
                         const now = Date.now();
-                        // Jangan cerewet. Hanya bersuara setiap 15 detik sekali jika masih melenceng
                         if (now - this.state.lastOffRouteWarn > 15000) {
                             this.speak("Anda keluar dari jalur. Rute sedang dihitung ulang.");
                             
-                            // Visual peringatan merah berkedip di header
                             this.DOM.topInstruction.textContent = "Menghitung ulang rute...";
                             this.DOM.topInstruction.classList.add('text-red-300');
                             setTimeout(() => {
@@ -911,6 +903,30 @@
                         }
                     }
                 }
+            }
+
+            // PERBAIKAN: Fungsi penentu sudut pandang jalan
+            getHeadingTarget(currentPos) {
+                if (!this.state.currentRouteSegments || this.state.currentRouteSegments.length === 0) {
+                    return [this.state.currentTarget.lat, this.state.currentTarget.lng];
+                }
+                
+                let targetPos = this.state.currentRouteSegments[0].end;
+                for (let i = 0; i < this.state.currentRouteSegments.length; i++) {
+                    const segEnd = this.state.currentRouteSegments[i].end;
+                    const dist = turf.distance(
+                        turf.point([currentPos[1], currentPos[0]]), 
+                        turf.point([segEnd[1], segEnd[0]]), 
+                        {units: 'meters'}
+                    );
+                    
+                    if (dist > 5) { // Cari titik di rute yang minimal berjarak 5 meter ke depan untuk pedoman arah
+                        targetPos = segEnd;
+                        break;
+                    }
+                    targetPos = segEnd;
+                }
+                return targetPos;
             }
 
             updateMapHeading(startPos, endPos) {
@@ -953,10 +969,8 @@
                 
                 const actualStartPos = this.state.isManualStart ? [this.state.manualStartTarget.lat, this.state.manualStartTarget.lng] : this.state.userPos;
                 
-                let targetPos = this.state.currentRouteSegments[0].end;
-                if(this.state.currentRouteSegments.length > 1) {
-                    targetPos = this.state.currentRouteSegments[1].end;
-                }
+                // MENGGUNAKAN LOGIKA PENGHITUNG SUDUT BARU
+                let targetPos = this.getHeadingTarget(actualStartPos);
                 
                 this.updateMapHeading(actualStartPos, targetPos);
                 this.state.map.flyTo(actualStartPos, 21, { animate: true, duration: 1.5, easeLinearity: 0.25 });
@@ -1020,7 +1034,6 @@
                         this.DOM.btnLocation.classList.remove('text-red-500');
                     },
                     (err) => {
-                        // Tampilkan Notifikasi Khusus jika diblokir
                         if(err.code === 1) {
                             this.showToast("Akses GPS diblokir. Gunakan pilihan lokasi manual di atas.", "error");
                         }
@@ -1045,7 +1058,10 @@
                         if (this.state.isNavigating && this.state.currentTarget && !this.state.isManualStart) {
                             if (this.state.isCameraLocked) {
                                 this.state.map.panTo(newPos, { animate: true, duration: 1 });
-                                this.updateMapHeading(newPos, [this.state.currentTarget.lat, this.state.currentTarget.lng]);
+                                
+                                // MENGGUNAKAN LOGIKA PENGHITUNG SUDUT BARU UNTUK REALTIME TRACKING
+                                let targetPos = this.getHeadingTarget(newPos);
+                                this.updateMapHeading(newPos, targetPos);
                             }
                             this.checkRouteStatus(newPos);
                             this.calculateCustomRoute(true); 
