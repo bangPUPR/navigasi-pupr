@@ -39,6 +39,11 @@
             transition: transform 1.5s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
+        /* --- FITUR BARU: MODE MALAM (NIGHT MODE MAPS) --- */
+        .map-dark .leaflet-tile-pane {
+            filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
+        }
+
         /* CUSTOM ANIMATIONS */
         @keyframes fadeInUp { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
         .animate-fade-in-up { animation: fadeInUp 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards; opacity: 0; }
@@ -80,16 +85,15 @@
         }
 
         /* UI COMPONENTS */
-        .bottom-sheet { transform: translateY(100%); transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); will-change: transform; }
+        .bottom-sheet { transform: translateY(120%); transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); will-change: transform; }
         .sheet-active { transform: translateY(0); }
         .sheet-minimized { transform: translateY(calc(100% - var(--sheet-height))); }
 
-        /* PERBAIKAN RESPONSIVE DESKTOP */
         @media (min-width: 768px) {
             .bottom-sheet { transform: translateX(-120%); transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1); }
             .sheet-active { transform: translateX(0); }
-            .sheet-minimized { transform: translateX(0); } /* Desktop layarnya luas, panel tidak perlu di-minimize */
-            #sheet-handle { display: none; } /* Sembunyikan garis drag di PC */
+            .sheet-minimized { transform: translateX(0); }
+            #sheet-handle { display: none; }
             #instruksi-list { max-height: calc(100vh - 280px) !important; }
         }
 
@@ -102,86 +106,108 @@
         .custom-scroll::-webkit-scrollbar-thumb { background: rgba(14, 49, 96, 0.2); border-radius: 4px; }
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        /* FITUR BARU: Custom Toast Alert untuk menggantikan fungsi alert() yang diblokir iframe */
+        #toast-msg {
+            transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
+            pointer-events: none;
+            opacity: 0;
+            transform: translate(-50%, -20px);
+        }
+        #toast-msg.show {
+            opacity: 1;
+            transform: translate(-50%, 0);
+        }
     </style>
 </head>
 <body class="bg-gray-50 text-gray-800">
 
+    <!-- FITUR BARU: Custom Toast Alert UI -->
+    <div id="toast-msg" class="fixed top-20 md:top-24 left-1/2 z-[3000] px-6 py-3 rounded-full text-sm font-bold text-center shadow-lg w-max max-w-[90vw]">
+        Pesan Notifikasi
+    </div>
+
     <!-- Top Navigation Overlay -->
-    <header id="nav-header" class="show-on-nav absolute top-0 left-0 right-0 md:top-4 md:left-[430px] md:right-auto md:w-[400px] md:rounded-2xl z-[2000] bg-[#0e3160] border-b-4 md:border-b-0 md:border-l-4 border-[#facc15] text-white p-4 shadow-xl transition-all" role="banner">
+    <header id="nav-header" class="show-on-nav absolute top-0 left-0 right-0 md:top-4 md:left-4 md:right-auto md:w-[400px] md:rounded-2xl z-[2000] bg-[#0e3160] border-b-4 md:border-b-0 text-white p-4 shadow-xl transition-all" role="banner">
         <div class="flex items-center gap-4 max-w-md mx-auto">
             <div class="p-2 bg-[#facc15] text-[#0e3160] rounded-full shadow-inner animate-pulse" aria-hidden="true">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
                 </svg>
             </div>
-            <div class="flex-1">
-                <p id="top-instruction" class="text-xl font-bold leading-tight" aria-live="polite">Mencari rute...</p>
-                <p id="top-distance" class="text-sm text-[#facc15] font-semibold">--</p>
+            <div class="flex-1 min-w-0">
+                <!-- Teks ini bisa berkedip merah jika keluar jalur -->
+                <p id="top-instruction" class="text-xl font-bold leading-tight truncate transition-colors duration-300" aria-live="polite">Mencari rute...</p>
+                <p id="top-distance" class="text-sm text-[#facc15] font-semibold truncate">--</p>
             </div>
-            <button id="btn-stop-nav" class="bg-red-500 hover:bg-red-600 active:scale-95 transition-all p-2 rounded-lg text-xs font-bold uppercase tracking-wider shadow-md">Selesai</button>
+            <button id="btn-stop-nav" class="shrink-0 bg-red-500 hover:bg-red-600 active:scale-95 transition-all p-2 rounded-lg text-xs font-bold uppercase tracking-wider shadow-md">Selesai</button>
         </div>
     </header>
 
     <!-- Search Area -->
-    <!-- Ditambahkan: md:left-4 md:w-[400px] md:mx-0 untuk mengubah posisi ke kiri pada Desktop -->
     <div class="hide-on-nav absolute top-3 left-3 right-3 md:top-4 md:left-4 md:right-auto md:w-[400px] z-[1000] mx-auto md:mx-0 flex flex-col gap-2 animate-fade-in-up" style="animation-delay: 100ms;">
-        <div class="bg-white rounded-3xl shadow-lg flex flex-col border border-gray-100 focus-within:ring-2 focus-within:ring-[#0e3160] transition-all duration-300">
+        <div class="bg-white rounded-3xl shadow-lg flex flex-col border border-gray-100 focus-within:ring-2 focus-within:ring-[#0e3160] transition-all duration-300 overflow-hidden">
             
-            <!-- PERBAIKAN UI: Row 1 - Pilihan Titik Awal -->
-            <div class="flex items-center px-2 border-b border-gray-100 bg-gray-50 rounded-t-3xl">
-                <span class="p-2 text-blue-500" aria-hidden="true">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>
-                </span>
-                <select id="select-asal" aria-label="Pilih lokasi awal" class="flex-1 py-2 bg-transparent outline-none text-[#0e3160] font-semibold text-sm appearance-none truncate cursor-pointer transition-colors">
-                    <option value="gps" selected>📍 Lokasi Saat Ini (GPS)</option>
-                    <!-- Options populated by JS -->
-                </select>
-            </div>
+            <div class="flex relative">
+                <div class="flex flex-col items-center w-12 pt-5 pb-3">
+                    <div class="w-3 h-3 rounded-full border-2 border-[#1a73e8] bg-blue-50 z-10"></div>
+                    <div class="w-0.5 grow bg-gray-200 my-1"></div>
+                    <div class="w-3 h-3 rounded-full bg-red-500 z-10"></div>
+                </div>
 
-            <!-- PERBAIKAN UI: Row 2 - Pilihan Tujuan -->
-            <div class="flex items-center px-2 py-1 border-b border-gray-100">
-                <span class="p-2 text-red-500" aria-hidden="true">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-                </span>
-                <select id="select-tujuan" aria-label="Pilih lokasi tujuan" class="flex-1 py-2 bg-transparent outline-none text-[#0e3160] font-bold appearance-none truncate cursor-pointer transition-colors">
-                    <option value="" disabled selected>Cari tujuan di PUPR...</option>
-                </select>
-                <div class="p-1 border-l border-gray-200 ml-2">
+                <div class="flex-1 flex flex-col justify-center pr-3 py-1 min-w-0">
+                    <div class="border-b border-gray-100 py-2 min-w-0">
+                        <select id="select-asal" aria-label="Pilih lokasi awal" class="w-full bg-transparent outline-none text-gray-600 font-medium text-[13px] sm:text-sm appearance-none truncate cursor-pointer transition-colors">
+                            <option value="gps" selected>📍 Lokasi Saat Ini (GPS)</option>
+                        </select>
+                    </div>
+                    <div class="py-2 min-w-0 flex items-center">
+                        <select id="select-tujuan" aria-label="Pilih lokasi tujuan" class="flex-1 w-full bg-transparent outline-none text-[#0e3160] font-bold text-sm sm:text-base appearance-none truncate cursor-pointer transition-colors">
+                            <option value="" disabled selected>Mau ke mana?</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="w-14 flex flex-col items-center justify-center border-l border-gray-100 bg-gray-50/50 shrink-0">
                     <img src="https://upload.wikimedia.org/wikipedia/commons/d/d3/Lambang_Kabupaten_Garut.png" class="h-7 w-7 object-contain drop-shadow-sm transition-transform hover:scale-110" alt="Logo Garut">
                 </div>
             </div>
             
-            <!-- Row 3: Mode Kendaraan Toggle -->
-            <div class="flex bg-gray-50 rounded-b-3xl p-1.5 gap-1" id="mode-selector">
-                <button onclick="window.puprApp.setTransportMode('jalan_kaki')" id="btn-mode-jalan_kaki" class="flex-1 py-2 text-xs font-bold rounded-2xl bg-[#0e3160] text-white transition-all shadow-sm">
-                    🚶‍♂️ Jalan Kaki
+            <div class="flex bg-gray-100 p-1.5 gap-1 border-t border-gray-200" id="mode-selector">
+                <button onclick="window.puprApp.setTransportMode('jalan_kaki')" id="btn-mode-jalan_kaki" class="flex-1 py-1.5 text-[11px] sm:text-xs font-bold rounded-2xl bg-[#0e3160] text-white transition-all shadow-sm truncate">
+                    🚶‍♂️ Jalan
                 </button>
-                <button onclick="window.puprApp.setTransportMode('motor')" id="btn-mode-motor" class="flex-1 py-2 text-xs font-bold rounded-2xl text-gray-500 hover:bg-gray-200 transition-all">
+                <button onclick="window.puprApp.setTransportMode('motor')" id="btn-mode-motor" class="flex-1 py-1.5 text-[11px] sm:text-xs font-bold rounded-2xl text-gray-500 hover:bg-gray-200 transition-all truncate">
                     🏍️ Motor
                 </button>
-                <button onclick="window.puprApp.setTransportMode('mobil')" id="btn-mode-mobil" class="flex-1 py-2 text-xs font-bold rounded-2xl text-gray-500 hover:bg-gray-200 transition-all">
+                <button onclick="window.puprApp.setTransportMode('mobil')" id="btn-mode-mobil" class="flex-1 py-1.5 text-[11px] sm:text-xs font-bold rounded-2xl text-gray-500 hover:bg-gray-200 transition-all truncate">
                     🚗 Mobil
                 </button>
             </div>
         </div>
 
         <div class="flex overflow-x-auto hide-scrollbar gap-2 px-1 pb-1 mt-1">
-            <button onclick="window.puprApp.handleLocationSelect('toilet_1')" class="shrink-0 bg-white/90 backdrop-blur border border-gray-200 shadow-sm rounded-full px-4 py-1.5 text-sm font-semibold text-[#0e3160] hover:bg-[#0e3160] hover:text-white active:scale-95 transition-all flex items-center gap-1">🚻 Toilet</button>
-            <button onclick="window.puprApp.handleLocationSelect('mushala')" class="shrink-0 bg-white/90 backdrop-blur border border-gray-200 shadow-sm rounded-full px-4 py-1.5 text-sm font-semibold text-[#0e3160] hover:bg-[#0e3160] hover:text-white active:scale-95 transition-all flex items-center gap-1">🕌 Mushala</button>
-            <button onclick="window.puprApp.handleLocationSelect('kantin_1')" class="shrink-0 bg-white/90 backdrop-blur border border-gray-200 shadow-sm rounded-full px-4 py-1.5 text-sm font-semibold text-[#0e3160] hover:bg-[#0e3160] hover:text-white active:scale-95 transition-all flex items-center gap-1">☕ Kantin</button>
-            <button onclick="window.puprApp.handleLocationSelect('perpus')" class="shrink-0 bg-white/90 backdrop-blur border border-gray-200 shadow-sm rounded-full px-4 py-1.5 text-sm font-semibold text-[#0e3160] hover:bg-[#0e3160] hover:text-white active:scale-95 transition-all flex items-center gap-1">📚 Perpus</button>
+            <button onclick="window.puprApp.handleLocationSelect('toilet_1')" class="shrink-0 bg-white/90 backdrop-blur border border-gray-200 shadow-sm rounded-full px-3 py-1.5 text-[11px] sm:text-xs font-semibold text-[#0e3160] hover:bg-[#0e3160] hover:text-white active:scale-95 transition-all flex items-center gap-1">🚻 Toilet</button>
+            <button onclick="window.puprApp.handleLocationSelect('mushala')" class="shrink-0 bg-white/90 backdrop-blur border border-gray-200 shadow-sm rounded-full px-3 py-1.5 text-[11px] sm:text-xs font-semibold text-[#0e3160] hover:bg-[#0e3160] hover:text-white active:scale-95 transition-all flex items-center gap-1">🕌 Mushala</button>
+            <button onclick="window.puprApp.handleLocationSelect('kantin_1')" class="shrink-0 bg-white/90 backdrop-blur border border-gray-200 shadow-sm rounded-full px-3 py-1.5 text-[11px] sm:text-xs font-semibold text-[#0e3160] hover:bg-[#0e3160] hover:text-white active:scale-95 transition-all flex items-center gap-1">☕ Kantin</button>
+            <button onclick="window.puprApp.handleLocationSelect('perpus')" class="shrink-0 bg-white/90 backdrop-blur border border-gray-200 shadow-sm rounded-full px-3 py-1.5 text-[11px] sm:text-xs font-semibold text-[#0e3160] hover:bg-[#0e3160] hover:text-white active:scale-95 transition-all flex items-center gap-1">📚 Perpus</button>
         </div>
     </div>
 
-    <!-- Map Container Wrapper -->
+    <!-- Map Container -->
     <div id="map-wrapper" class="absolute inset-0 overflow-hidden z-[1] bg-[#e5e7eb]">
         <main id="map" class="absolute w-[200vw] h-[200vh] -left-[50vw] -top-[50vh]"></main>
     </div>
 
+    <!-- Tombol Re-Center -->
+    <button id="btn-recenter" class="hidden absolute bottom-44 md:bottom-12 left-1/2 -translate-x-1/2 z-[2000] rounded-full bg-[#1a73e8] px-4 py-2.5 shadow-[0_4px_15px_rgba(26,115,232,0.4)] items-center justify-center gap-2 text-white font-bold text-sm hover:bg-blue-700 active:scale-90 transition-all duration-300">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 22v-4M12 2V6M22 12h-4M2 12h4M12 15a3 3 0 100-6 3 3 0 000 6z" /></svg>
+        Kembali ke Lokasi
+    </button>
+
     <!-- Floating Action Buttons -->
-    <!-- Ditambahkan: md:bottom-8 md:right-8 agar posisi lebih elegan di Desktop -->
     <div class="hide-on-nav absolute bottom-6 right-4 md:bottom-8 md:right-8 z-[1000] flex flex-col gap-3 animate-fade-in-up" style="animation-delay: 300ms;">
-        <button id="btn-location" class="w-12 h-12 rounded-full bg-white shadow-lg flex items-center justify-center text-[#0e3160] hover:bg-gray-50 active:scale-90 transition-transform duration-200">
+        <button id="btn-location" class="w-12 h-12 rounded-full bg-white shadow-lg flex items-center justify-center text-red-500 hover:bg-gray-50 active:scale-90 transition-transform duration-200" aria-label="Aktifkan GPS">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>
         </button>
         <button id="btn-search-focus" class="w-14 h-14 rounded-full bg-[#facc15] shadow-[0_4px_15px_rgba(250,204,21,0.5)] flex items-center justify-center text-[#0e3160] hover:bg-yellow-300 active:scale-90 hover:-translate-y-1 transition-all duration-200">
@@ -190,16 +216,15 @@
     </div>
 
     <!-- Bottom Info Sheet -->
-    <!-- Ditambahkan: md:bottom-4 md:top-4 md:left-4 md:w-[400px] mengubah bentuk sheet jadi Side Panel penuh -->
-    <aside id="info-sheet" class="bottom-sheet absolute bottom-0 left-0 right-0 md:bottom-4 md:top-4 md:left-4 md:w-[400px] md:right-auto bg-white z-[1100] rounded-t-3xl md:rounded-3xl shadow-[0_-4px_25px_rgba(14,49,96,0.15)] md:shadow-[4px_4px_25px_rgba(14,49,96,0.15)] mx-auto border-t-[6px] md:border-t-0 md:border-l-[6px] border-[#0e3160] flex flex-col" aria-hidden="true">
-        <div id="sheet-handle" class="w-full flex justify-center py-4 cursor-pointer hover:bg-gray-50 transition-colors rounded-t-3xl" tabindex="0">
+    <aside id="info-sheet" class="bottom-sheet absolute bottom-0 left-0 right-0 md:bottom-4 md:left-4 md:w-[400px] md:right-auto bg-white z-[1100] rounded-t-3xl md:rounded-3xl shadow-[0_-4px_25px_rgba(14,49,96,0.15)] md:shadow-[4px_4px_25px_rgba(14,49,96,0.15)] mx-auto border-t-[6px] md:border-t-0 md:border-l-[6px] border-[#0e3160] flex flex-col" aria-hidden="true">
+        <div id="sheet-handle" class="w-full flex justify-center py-4 cursor-pointer hover:bg-gray-50 transition-colors rounded-t-3xl md:rounded-t-3xl" tabindex="0" onclick="window.puprApp.toggleSheet()">
             <div class="w-12 h-1.5 bg-gray-300 rounded-full transition-transform hover:scale-x-110"></div>
         </div>
         <div class="px-6 pb-8">
             <div class="flex justify-between items-start mb-6">
                 <div>
                     <h2 id="sheet-title" class="text-2xl font-black text-[#0e3160] leading-tight transition-all">Nama Lokasi</h2>
-                    <p id="sheet-meta" class="text-[#15803d] font-bold text-sm mt-1 transition-all">-- meter • -- menit</p>
+                    <p id="sheet-meta" class="mt-1 transition-all">-- meter • -- menit</p>
                 </div>
                 <button id="btn-close-sheet" class="p-2 bg-gray-100 hover:bg-gray-200 hover:rotate-90 active:scale-90 rounded-full text-gray-500 transition-all duration-300">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
@@ -256,7 +281,6 @@
                     { id: 'titik_2', name: 'TITIK PUPR 2', lat: -7.198703693159714, lng: 107.8773197790697, cat: 'Titik Acuan' }
                 ];
 
-                // KOORDINAT PARKIRAN (Diekstrak dari KML Poligon Parkir)
                 this.PARKIRAN = [
                     { id: 'p1', name: 'Parkiran Bagian Umum', lat: -7.19896, lng: 107.87644, type: 'mobil' },
                     { id: 'p2', name: 'Parkiran Kepala Dinas & R. Rapat', lat: -7.19936, lng: 107.87650, type: 'mobil' },
@@ -301,15 +325,15 @@
                     graph: new Map(), 
                     nodes: [], 
                     transportMode: 'jalan_kaki',
-                    
-                    // STATE BARU: Titik Awal Manual
                     isManualStart: false,
-                    manualStartTarget: null
+                    manualStartTarget: null,
+                    isCameraLocked: true,
+                    lastOffRouteWarn: 0 // Jeda peringatan salah jalur
                 };
 
                 this.DOM = {
                     body: document.body,
-                    selectAsal: document.getElementById('select-asal'), // DOM BARU
+                    selectAsal: document.getElementById('select-asal'),
                     selectTujuan: document.getElementById('select-tujuan'),
                     sheet: document.getElementById('info-sheet'),
                     sheetTitle: document.getElementById('sheet-title'),
@@ -325,7 +349,9 @@
                     sheetHandle: document.getElementById('sheet-handle'),
                     btnModeJalanKaki: document.getElementById('btn-mode-jalan_kaki'),
                     btnModeMotor: document.getElementById('btn-mode-motor'),
-                    btnModeMobil: document.getElementById('btn-mode-mobil')
+                    btnModeMobil: document.getElementById('btn-mode-mobil'),
+                    btnRecenter: document.getElementById('btn-recenter'),
+                    toast: document.getElementById('toast-msg') // DOM Toast Baru
                 };
 
                 this.init();
@@ -343,7 +369,6 @@
                         iconAnchor: [22, 22],
                         zIndexOffset: 1000
                     }),
-                    // Icon P khusus area parkir
                     parking: L.divIcon({
                         className: 'parkir-icon',
                         html: `<div style="background-color:#1a73e8; color:white; width:26px; height:26px; border-radius:50%; text-align:center; line-height:26px; font-weight:900; font-size:14px; border:2px solid white; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">P</div>`,
@@ -352,11 +377,52 @@
                     })
                 };
 
+                this.checkDarkMode(); // Cek jam untuk aktifkan mode malam
                 this.setupMap();
                 this.buildRoutingGraph(); 
                 this.populateDropdown();
                 this.setupEventListeners();
+                this.unlockAudioEngine(); // Pancing Audio Engine
                 this.requestGeolocation();
+            }
+
+            // FITUR BARU: Membuka kunci Autoplay Audio di dalam iFrame
+            unlockAudioEngine() {
+                const unlock = () => {
+                    const msg = new SpeechSynthesisUtterance('');
+                    window.speechSynthesis.speak(msg);
+                    document.removeEventListener('touchstart', unlock);
+                    document.removeEventListener('click', unlock);
+                };
+                document.addEventListener('touchstart', unlock, { once: true });
+                document.addEventListener('click', unlock, { once: true });
+            }
+
+            // FITUR BARU: Custom Alert yang tidak akan diblokir Google Sites
+            showToast(message, type = 'error') {
+                this.DOM.toast.textContent = message;
+                if (type === 'error') {
+                    this.DOM.toast.className = "fixed top-20 md:top-24 left-1/2 z-[3000] px-6 py-3 rounded-full text-sm font-bold text-center shadow-lg w-max max-w-[90vw] bg-red-600 text-white transition-all duration-300";
+                } else {
+                    this.DOM.toast.className = "fixed top-20 md:top-24 left-1/2 z-[3000] px-6 py-3 rounded-full text-sm font-bold text-center shadow-lg w-max max-w-[90vw] bg-[#15803d] text-white transition-all duration-300";
+                }
+                
+                this.DOM.toast.classList.add('show');
+                setTimeout(() => {
+                    this.DOM.toast.classList.remove('show');
+                }, 4000);
+            }
+
+            checkDarkMode() {
+                const hour = new Date().getHours();
+                if (hour >= 18 || hour < 6) {
+                    document.documentElement.classList.add('dark-theme-active');
+                    // Tunggu map dimuat, lalu tambahkan class filter invert ke petanya
+                    setTimeout(() => {
+                        const mapElem = document.getElementById('map');
+                        if(mapElem) mapElem.classList.add('map-dark');
+                    }, 500);
+                }
             }
 
             setTransportMode(mode) {
@@ -512,7 +578,6 @@
                 });
             }
 
-            // PERBAIKAN: Mengisi Dropdown Asal dan Tujuan secara bersamaan
             populateDropdown() {
                 const categories = [...new Set(this.LOCATIONS.map(loc => loc.cat))].sort();
                 
@@ -536,19 +601,38 @@
             }
 
             setupEventListeners() {
-                // EVENT LISTENER BARU UNTUK PILIHAN TITIK AWAL
                 this.DOM.selectAsal.addEventListener('change', (e) => this.handleStartSelect(e.target.value));
-                
                 this.DOM.selectTujuan.addEventListener('change', (e) => this.handleLocationSelect(e.target.value));
                 this.DOM.btnLocation.addEventListener('click', () => this.focusUserLocation());
                 this.DOM.btnSearchFocus.addEventListener('click', () => this.DOM.selectTujuan.focus());
                 this.DOM.btnStartNav.addEventListener('click', () => this.startNavigation());
                 this.DOM.btnStopNav.addEventListener('click', () => this.stopNavigation());
                 this.DOM.btnCloseSheet.addEventListener('click', () => this.updateSheetState('closed'));
-                this.DOM.sheetHandle.addEventListener('click', () => {
-                    const newState = this.state.sheetState === 'active' ? 'minimized' : 'active';
-                    this.updateSheetState(newState);
+                
+                this.state.map.on('dragstart', () => {
+                    if (this.state.isNavigating && this.state.isCameraLocked) {
+                        this.state.isCameraLocked = false;
+                        this.DOM.btnRecenter.classList.remove('hidden');
+                        this.DOM.btnRecenter.classList.add('flex');
+                    }
                 });
+
+                this.DOM.btnRecenter.addEventListener('click', () => {
+                    this.state.isCameraLocked = true;
+                    this.DOM.btnRecenter.classList.add('hidden');
+                    this.DOM.btnRecenter.classList.remove('flex');
+                    
+                    const actualStartPos = this.state.isManualStart ? [this.state.manualStartTarget.lat, this.state.manualStartTarget.lng] : this.state.userPos;
+                    this.state.map.flyTo(actualStartPos, 21, { animate: true, duration: 1 });
+                });
+            }
+
+            toggleSheet() {
+                if(this.state.sheetState === 'active') {
+                    this.updateSheetState('minimized');
+                } else if(this.state.sheetState === 'minimized') {
+                    this.updateSheetState('active');
+                }
             }
 
             handleLocationSelect(id) {
@@ -562,25 +646,24 @@
                 this.calculateCustomRoute();
             }
 
-            // FUNGSI BARU: Menangani Perubahan Titik Awal Manual
             handleStartSelect(id) {
                 if (id === 'gps') {
                     this.state.isManualStart = false;
                     this.state.manualStartTarget = null;
-                    this.state.userMarker.setLatLng(this.state.userPos); // Kembalikan ke posisi GPS
+                    this.state.userMarker.setLatLng(this.state.userPos); 
                     this.state.map.flyTo(this.state.userPos, 19, { animate: true });
                 } else {
                     this.state.isManualStart = true;
                     this.state.manualStartTarget = this.LOCATIONS.find(p => p.id === id);
                     if (this.state.manualStartTarget) {
                         const manualPos = [this.state.manualStartTarget.lat, this.state.manualStartTarget.lng];
-                        this.state.userMarker.setLatLng(manualPos); // Pindahkan icon user ke titik manual
+                        this.state.userMarker.setLatLng(manualPos); 
                         this.state.map.flyTo(manualPos, 19, { animate: true });
                     }
                 }
                 
                 this.DOM.selectAsal.blur();
-                if (this.state.currentTarget) this.calculateCustomRoute(); // Hitung ulang jika tujuan sudah ada
+                if (this.state.currentTarget) this.calculateCustomRoute(); 
             }
 
             calculateCustomRoute(isSilent = false) {
@@ -597,14 +680,12 @@
                 }
 
                 setTimeout(() => {
-                    // PERBAIKAN: Gunakan actualStartPos berdasarkan pilihan GPS atau Manual
                     const actualStartPos = this.state.isManualStart ? [this.state.manualStartTarget.lat, this.state.manualStartTarget.lng] : this.state.userPos;
                     const startLngLat = [actualStartPos[1], actualStartPos[0]];
                     const targetLngLat = [this.state.currentTarget.lng, this.state.currentTarget.lat];
                     
                     let shortestPath = [];
 
-                    // ALGORITMA: RUTE KE PARKIRAN LALU KE GEDUNG (Jika Menggunakan Kendaraan)
                     if (this.state.transportMode !== 'jalan_kaki') {
                         const targetPoint = turf.point(targetLngLat);
                         
@@ -632,7 +713,6 @@
                             const path1 = this.findShortestPath(startLngLat, parkLngLat, this.state.transportMode);
                             const path2 = this.findShortestPath(parkLngLat, targetLngLat, 'jalan_kaki');
 
-                            // MENGGUNAKAN actualStartPos
                             if (path1.length > 0) {
                                 shortestPath.push({ start: actualStartPos, end: path1[0].start, type: this.state.transportMode });
                                 shortestPath.push(...path1);
@@ -650,11 +730,9 @@
                             }
                         }
                     } else {
-                        // JIKA JALAN KAKI: Langsung Rute User -> Gedung
                         this.state.currentParking = null;
                         const pathWalk = this.findShortestPath(startLngLat, targetLngLat, 'jalan_kaki');
                         
-                        // MENGGUNAKAN actualStartPos
                         if (pathWalk.length > 0) {
                             shortestPath.push({ start: actualStartPos, end: pathWalk[0].start, type: 'jalan_kaki' });
                             shortestPath.push(...pathWalk);
@@ -672,7 +750,7 @@
 
             drawCustomRoute(pathSegments, isSilent = false) {
                 if (isSilent) {
-                    this.clearRouteLayers(); // Hapus garis lama secara diam-diam sebelum digambar ulang
+                    this.clearRouteLayers(); 
                 }
 
                 const groupedSegments = [];
@@ -715,8 +793,8 @@
                 if (allCoords.length > 0 && !isSilent) {
                     const isDesktop = window.innerWidth >= 768;
                     this.state.map.fitBounds(L.latLngBounds(allCoords), { 
-                        paddingTopLeft: isDesktop ? [420, 50] : [50, 50],
-                        paddingBottomRight: isDesktop ? [50, 50] : [50, 300] 
+                        paddingTopLeft: [50, 50],
+                        paddingBottomRight: isDesktop ? [50, 400] : [50, 300] 
                     });
                 }
             }
@@ -724,7 +802,6 @@
             clearRouteLayers() {
                 this.state.routeLayers.forEach(layer => this.state.map.removeLayer(layer));
                 this.state.routeLayers = [];
-                // this.state.currentRouteSegments sengaja TIDAK dikosongkan di sini agar data realtime utuh
             }
 
             renderCustomRouteInfo(pathSegments, isSilent = false) {
@@ -747,11 +824,13 @@
                 const timeSecs = (distKendaraan / 5.5) + (distJalanKaki / 1.4);
                 const timeMinutes = Math.ceil(timeSecs / 60) || 1;
 
-                // Update teks jarak real-time setiap kali user bergerak!
-                this.DOM.sheetMeta.textContent = `${totalDistMeters} meter • Estimasi ${timeMinutes} menit`;
+                const arrivalTime = new Date();
+                arrivalTime.setMinutes(arrivalTime.getMinutes() + timeMinutes);
+                const timeString = arrivalTime.getHours().toString().padStart(2, '0') + ':' + arrivalTime.getMinutes().toString().padStart(2, '0');
+
+                this.DOM.sheetMeta.innerHTML = `<span class="text-[#15803d] font-black text-lg">${timeMinutes} mnt</span> <span class="text-gray-500 font-medium text-sm">(${totalDistMeters} m)</span> <span class="mx-1 text-gray-300">•</span> <span class="text-[#0e3160] font-bold text-sm">Tiba ${timeString}</span>`;
                 this.DOM.topDistance.textContent = `Sisa jarak: ${totalDistMeters} m`;
 
-                // Render HTML instruksi hanya di awal (bukan saat silent update) agar UI tidak kedip-kedip
                 if (!isSilent) {
                     this.DOM.sheetTitle.textContent = this.state.currentTarget.name;
                     let instructionHTML = '';
@@ -787,6 +866,53 @@
                 }
             }
 
+            // FITUR BARU: Deteksi Peringatan Keluar Jalur & Tiba di Tujuan
+            checkRouteStatus(newPos) {
+                if (!this.state.currentRouteSegments || this.state.currentRouteSegments.length === 0) return;
+
+                const userPt = turf.point([newPos[1], newPos[0]]);
+                const targetPt = turf.point([this.state.currentTarget.lng, this.state.currentTarget.lat]);
+                const distToTarget = turf.distance(userPt, targetPt, {units: 'meters'});
+
+                // 1. Cek jika sudah sangat dekat dengan tujuan (berhenti otomatis)
+                if (distToTarget <= 15) {
+                    this.speak(`Anda telah sampai di ${this.state.currentTarget.name}. Navigasi diakhiri.`);
+                    this.stopNavigation();
+                    return;
+                }
+
+                // 2. Cek Off-Route (Nyasar / Melenceng dari Garis)
+                const routeCoords = [];
+                this.state.currentRouteSegments.forEach(seg => {
+                    routeCoords.push([seg.start[1], seg.start[0]]);
+                    routeCoords.push([seg.end[1], seg.end[0]]);
+                });
+
+                if (routeCoords.length >= 2) {
+                    const routeLine = turf.lineString(routeCoords);
+                    const distToRoute = turf.pointToLineDistance(userPt, routeLine, {units: 'meters'});
+
+                    // Toleransi melenceng 20 meter dari jalan
+                    if (distToRoute > 20) {
+                        const now = Date.now();
+                        // Jangan cerewet. Hanya bersuara setiap 15 detik sekali jika masih melenceng
+                        if (now - this.state.lastOffRouteWarn > 15000) {
+                            this.speak("Anda keluar dari jalur. Rute sedang dihitung ulang.");
+                            
+                            // Visual peringatan merah berkedip di header
+                            this.DOM.topInstruction.textContent = "Menghitung ulang rute...";
+                            this.DOM.topInstruction.classList.add('text-red-300');
+                            setTimeout(() => {
+                                this.DOM.topInstruction.classList.remove('text-red-300');
+                                this.DOM.topInstruction.textContent = `Jalan menuju tujuan`;
+                            }, 4000);
+                            
+                            this.state.lastOffRouteWarn = now;
+                        }
+                    }
+                }
+            }
+
             updateMapHeading(startPos, endPos) {
                 if (!this.state.isNavigating) return;
 
@@ -819,10 +945,9 @@
                 this.DOM.body.classList.add('is-navigating');
                 this.updateSheetState('minimized');
                 
-                this.state.map.dragging.disable();
-                this.state.map.touchZoom.disable();
-                this.state.map.doubleClickZoom.disable();
-                this.state.map.scrollWheelZoom.disable();
+                this.state.isCameraLocked = true;
+                this.DOM.btnRecenter.classList.add('hidden');
+                this.DOM.btnRecenter.classList.remove('flex');
                 
                 this.state.userMarker.setIcon(this.icons.navigating);
                 
@@ -836,7 +961,6 @@
                 this.updateMapHeading(actualStartPos, targetPos);
                 this.state.map.flyTo(actualStartPos, 21, { animate: true, duration: 1.5, easeLinearity: 0.25 });
                 
-                // Kata-kata instruksi berbeda jika simulasi
                 const textMsg = this.state.isManualStart ? `Simulasi rute ke ${this.state.currentTarget.name} dimulai.` : `Navigasi dimulai. Silakan ikuti jalur di peta.`;
                 this.speak(textMsg);
             }
@@ -848,10 +972,9 @@
                 this.DOM.selectTujuan.value = "";
                 this.state.currentTarget = null;
                 
-                this.state.map.dragging.enable();
-                this.state.map.touchZoom.enable();
-                this.state.map.doubleClickZoom.enable();
-                this.state.map.scrollWheelZoom.enable();
+                this.state.isCameraLocked = true;
+                this.DOM.btnRecenter.classList.add('hidden');
+                this.DOM.btnRecenter.classList.remove('flex');
                 
                 this.clearRouteLayers();
                 
@@ -861,7 +984,6 @@
 
                 this.state.userMarker.setIcon(this.icons.idle);
                 
-                // Kembali ke posisi yang sesuai (Manual atau GPS)
                 const actualStartPos = this.state.isManualStart ? [this.state.manualStartTarget.lat, this.state.manualStartTarget.lng] : this.PUSAT_KAWASAN;
                 this.state.map.flyTo(actualStartPos, 19, { animate: true, duration: 1.5 });
                 
@@ -871,29 +993,48 @@
             updateSheetState(newState) {
                 this.state.sheetState = newState;
                 this.DOM.sheet.classList.remove('sheet-active', 'sheet-minimized');
-                if (newState === 'active') this.DOM.sheet.classList.add('sheet-active');
-                else if (newState === 'minimized') this.DOM.sheet.classList.add('sheet-minimized');
+                if (newState === 'active') {
+                    this.DOM.sheet.classList.add('sheet-active');
+                } else if (newState === 'minimized') {
+                    this.DOM.sheet.classList.add('sheet-minimized');
+                }
             }
 
             requestGeolocation() {
                 if (!navigator.geolocation) {
-                    console.warn("GPS tidak didukung browser ini.");
+                    this.showToast("GPS tidak didukung oleh browser Anda.");
                     return;
                 }
 
-                // PERBAIKAN: Konfigurasi tracking GPS yang super agresif (Real-time Murni)
-                const options = {
-                    enableHighAccuracy: true,
-                    maximumAge: 1000, // Ambil data lokasi sekecil mungkin
-                    timeout: 5000     // Timeout cepat agar terus me-refresh jika sinyal buruk
-                };
+                const options = { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 };
+
+                navigator.geolocation.getCurrentPosition(
+                    (pos) => {
+                        const newPos = [pos.coords.latitude, pos.coords.longitude];
+                        this.state.userPos = newPos;
+                        if (!this.state.isManualStart) {
+                            this.state.userMarker.setLatLng(newPos);
+                            this.state.map.setView(newPos, 19); 
+                        }
+                        this.DOM.btnLocation.classList.add('text-[#1a73e8]');
+                        this.DOM.btnLocation.classList.remove('text-red-500');
+                    },
+                    (err) => {
+                        // Tampilkan Notifikasi Khusus jika diblokir
+                        if(err.code === 1) {
+                            this.showToast("Akses GPS diblokir. Gunakan pilihan lokasi manual di atas.", "error");
+                        }
+                        this.DOM.btnLocation.classList.remove('text-[#1a73e8]');
+                        this.DOM.btnLocation.classList.add('text-red-500');
+                    },
+                    options
+                );
 
                 this.watchId = navigator.geolocation.watchPosition(
                     (pos) => {
                         const newPos = [pos.coords.latitude, pos.coords.longitude];
                         this.state.userPos = newPos;
                         
-                        // JANGAN UBAH POSISI MARKER JIKA MODE MANUAL AKTIF
                         if (!this.state.isManualStart) {
                             this.state.userMarker.setLatLng(newPos);
                         }
@@ -901,16 +1042,16 @@
                         this.DOM.btnLocation.classList.add('text-[#1a73e8]');
                         this.DOM.btnLocation.classList.remove('text-red-500');
                         
-                        // HANYA LAKUKAN REALTIME TRACKING JIKA PAKAI GPS ASLI
                         if (this.state.isNavigating && this.state.currentTarget && !this.state.isManualStart) {
-                            this.state.map.panTo(newPos, { animate: true, duration: 1 });
-                            this.updateMapHeading(newPos, [this.state.currentTarget.lat, this.state.currentTarget.lng]);
+                            if (this.state.isCameraLocked) {
+                                this.state.map.panTo(newPos, { animate: true, duration: 1 });
+                                this.updateMapHeading(newPos, [this.state.currentTarget.lat, this.state.currentTarget.lng]);
+                            }
+                            this.checkRouteStatus(newPos);
                             this.calculateCustomRoute(true); 
                         }
                     },
                     (err) => {
-                        console.warn("GPS Error:", err.message);
-                        // Ubah tombol GPS jadi merah jika sinyal hilang (Masuk terowongan/ruangan)
                         this.DOM.btnLocation.classList.remove('text-[#1a73e8]');
                         this.DOM.btnLocation.classList.add('text-red-500');
                     },
@@ -919,9 +1060,13 @@
             }
 
             focusUserLocation() { 
-                this.state.map.flyTo(this.state.userPos, 20, { animate: true, duration: 1 }); 
+                if (this.state.isManualStart) {
+                    this.state.map.flyTo([this.state.manualStartTarget.lat, this.state.manualStartTarget.lng], 20, { animate: true, duration: 1 });
+                    return;
+                }
+
+                this.showToast("Mencari sinyal GPS...", "success");
                 
-                // Memicu satu tembakan paksa pencarian GPS instan saat tombol ditekan
                 navigator.geolocation.getCurrentPosition(
                     (pos) => {
                         const newPos = [pos.coords.latitude, pos.coords.longitude];
@@ -929,14 +1074,33 @@
                         this.state.userMarker.setLatLng(newPos);
                         this.state.map.flyTo(newPos, 20, { animate: true, duration: 1 });
                         
-                        if(this.state.isNavigating) this.calculateCustomRoute(true);
+                        if(this.state.isNavigating && !this.state.isManualStart) this.calculateCustomRoute(true);
                     },
-                    (err) => alert("Mohon izinkan akses Lokasi/GPS di pengaturan Browser atau HP Anda."),
+                    (err) => {
+                        if(err.code === 1) {
+                            this.showToast("Izin GPS ditolak oleh Browser/Google Sites. Gunakan mode manual.", "error");
+                        } else {
+                            this.showToast("Gagal mendapat sinyal GPS. Coba di area terbuka.", "error");
+                        }
+                    },
                     { enableHighAccuracy: true }
                 );
             }
 
-            speak(text) { if ('speechSynthesis' in window) { try { window.speechSynthesis.cancel(); const msg = new SpeechSynthesisUtterance(text); msg.lang = 'id-ID'; window.speechSynthesis.speak(msg); } catch (e) {} } }
+            speak(text) { 
+                if ('speechSynthesis' in window) { 
+                    try { 
+                        window.speechSynthesis.cancel(); 
+                        const msg = new SpeechSynthesisUtterance(text); 
+                        msg.lang = 'id-ID'; 
+                        msg.rate = 1.0;
+                        msg.pitch = 1.0;
+                        window.speechSynthesis.speak(msg); 
+                    } catch (e) {
+                        console.error("Speech error", e);
+                    } 
+                } 
+            }
             escapeHTML(str) { const div = document.createElement('div'); div.textContent = str; return div.innerHTML; }
         }
 
