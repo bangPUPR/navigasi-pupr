@@ -7,7 +7,8 @@
     <meta name="description" content="Aplikasi Navigasi Kawasan Dinas PUPR Kabupaten Garut">
     
     <!-- Content Security Policy (CSP) ketat -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com; img-src 'self' data: blob: https://*.tile.openstreetmap.org https://images.unsplash.com https://upload.wikimedia.org; media-src 'self' blob:; worker-src 'self' blob:; connect-src 'self' https://*.tile.openstreetmap.org;">
+    <!-- [DIPERBARUI] Menambahkan https://*.google.com pada img-src untuk Base Maps Google -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com; img-src 'self' data: blob: https://*.tile.openstreetmap.org https://*.google.com https://images.unsplash.com https://upload.wikimedia.org; media-src 'self' blob:; worker-src 'self' blob:; connect-src 'self' https://*.tile.openstreetmap.org https://*.google.com;">
 
     <title>Navigasi PUPR Garut - Ultimate SPA</title>
     
@@ -85,6 +86,14 @@
         .leaflet-popup-content { margin: 0 !important; width: 240px !important; }
         .leaflet-popup-close-button { color: white !important; text-shadow: 0 1px 2px rgba(0,0,0,0.5); }
         .custom-pin-marker { background: transparent; border: none; }
+        
+        /* [DIPERBARUI] Pastikan kontrol layer Leaflet bisa diklik dan berada di atas elemen lain */
+        .leaflet-control-layers { 
+            z-index: 2000 !important; 
+            pointer-events: auto !important; 
+            border-radius: 12px !important;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.15) !important;
+        }
 
         .floor-control { position: absolute; right: 1rem; top: 50%; transform: translateY(-50%); z-index: 1000; display: flex; flex-direction: column; gap: 0.5rem; background: rgba(255,255,255,0.9); padding: 0.25rem; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); backdrop-filter: blur(4px); }
         .floor-btn { width: 40px; height: 40px; border-radius: 8px; font-weight: 900; font-size: 13px; color: #4b5563; transition: all 0.2s; display: flex; align-items: center; justify-content: center; cursor: pointer; }
@@ -491,8 +500,10 @@
 
         class PuprNavigationApp {
             constructor() {
+                // 1. LOAD DATA
                 this.loadData();
                 
+                // 2. INIT STATE
                 this.state = { 
                     map: null, userMarker: null, routeLayers: [], poiLayer: null,
                     currentTarget: null, currentRouteSegments: [], currentParking: null,
@@ -511,7 +522,7 @@
                 this.watchId = null;
                 this.queueIntervalId = null;
                 
-                // Explicit binding for context
+                // 3. BIND METHODS SEBELUM DOM DIBUAT
                 this.calculateCustomRoute = this.calculateCustomRoute.bind(this);
                 this.calculateCustomRouteThrottled = debounce(this.calculateCustomRoute, 1000);
                 this.startNavigation = this.startNavigation.bind(this);
@@ -528,8 +539,18 @@
                 this.buildRoutingGraph = this.buildRoutingGraph.bind(this);
                 this.findService = this.findService.bind(this);
                 this.simulateQueues = this.simulateQueues.bind(this);
+                this.handleCompass = this.handleCompass.bind(this);
+                this.toggleSheet = this.toggleSheet.bind(this);
+                this.setupEventListeners = this.setupEventListeners.bind(this); 
 
+                // Mengikat fungsi setup layers untuk kontrol tile base map
+                this.setupMap = this.setupMap.bind(this);
+                this.renderCustomRouteInfo = this.renderCustomRouteInfo.bind(this);
+
+                // 4. INIT DOM SETELAH BIND
                 this.initDOM();
+
+                // 5. INIT APP
                 this.init();
             }
 
@@ -640,7 +661,7 @@
                         self.addEventListener('install', e => { e.waitUntil(self.skipWaiting()); });
                         self.addEventListener('activate', e => { e.waitUntil(self.clients.claim()); });
                         self.addEventListener('fetch', e => {
-                            if(e.request.url.includes('tile.openstreetmap.org')) {
+                            if(e.request.url.includes('tile.openstreetmap.org') || e.request.url.includes('.google.com/vt')) {
                                 e.respondWith(caches.match(e.request).then(res => {
                                     if(res) return res;
                                     return fetch(e.request).then(fetchRes => {
@@ -675,11 +696,13 @@
             requestDeviceOrientation() {
                 if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                     DeviceOrientationEvent.requestPermission().then(state => {
-                        if (state === 'granted') window.addEventListener('deviceorientation', this.handleCompass.bind(this), true);
+                        if (state === 'granted') {
+                            window.addEventListener('deviceorientation', this.handleCompass, true);
+                        }
                     }).catch(console.error);
                 } else {
-                    window.addEventListener('deviceorientationabsolute', this.handleCompass.bind(this), true);
-                    window.addEventListener('deviceorientation', this.handleCompass.bind(this), true);
+                    window.addEventListener('deviceorientationabsolute', this.handleCompass, true);
+                    window.addEventListener('deviceorientation', this.handleCompass, true);
                 }
             }
 
@@ -802,9 +825,23 @@
             }
 
             setupMap() {
-                const openStreetMap = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 22, maxNativeZoom: 19, attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>', keepBuffer: 8, updateWhenIdle: false });
-                this.state.map = L.map('map', { zoomControl: false, attributionControl: false, zoomSnap: 0.5, layers: [openStreetMap] }).setView(this.state.userPos, 20);
-                L.control.attribution({position: 'bottomleft', prefix: false}).addTo(this.state.map);
+                const openStreetMap = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 22, maxNativeZoom: 19, attribution: '© OpenStreetMap', keepBuffer: 8, updateWhenIdle: false });
+                
+                // Menambahkan Layer Peta Satelit dan Peta Google untuk integrasi luar
+                const googleStreets = L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', { maxZoom: 22, subdomains: ['mt0', 'mt1', 'mt2', 'mt3'], attribution: '© Google Maps' });
+                const googleSat = L.tileLayer('https://{s}.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}', { maxZoom: 22, subdomains: ['mt0', 'mt1', 'mt2', 'mt3'], attribution: '© Google Satellite' });
+
+                this.state.map = L.map('map', { zoomControl: false, attributionControl: false, zoomSnap: 0.5, layers: [googleStreets] }).setView(this.state.userPos, 20);
+                
+                const baseMaps = {
+                    "Peta Google": googleStreets,
+                    "Satelit Google": googleSat,
+                    "OpenStreetMap": openStreetMap
+                };
+
+                L.control.layers(baseMaps, null, { position: 'bottomleft' }).addTo(this.state.map);
+                L.control.attribution({position: 'bottomright', prefix: false}).addTo(this.state.map);
+                
                 this.state.userMarker = L.marker(this.state.userPos, { icon: this.icons.idle }).addTo(this.state.map);
                 this.state.poiLayer = L.layerGroup().addTo(this.state.map);
                 this.renderPOIs();
@@ -905,7 +942,7 @@
             }
 
             findService() {
-                if(!this.DOM.inputSmartService || !this.DOM.serviceResultContainer) return;
+                if (!this.DOM.inputSmartService || !this.DOM.serviceResultContainer) return;
                 const text = this.DOM.inputSmartService.value.toLowerCase().trim();
                 
                 if (!text) {
@@ -1720,15 +1757,35 @@
                         this.state.availableRoutes.push(shortestRoute);
                     }
 
+                    // Tambahkan Rute Eksternal (Maps / OSM) ke UI
+                    this.state.availableRoutes.push({
+                        isExternal: true,
+                        name: 'Buka di Google Maps',
+                        type: 'gmaps'
+                    });
+
                     this.selectRoute(0, isSilent);
 
                 }, isSilent ? 0 : 100); 
             }
 
             selectRoute(index, isSilent = false) {
-                if (!this.state.availableRoutes[index]) return;
-                this.state.selectedRouteIndex = index;
                 const route = this.state.availableRoutes[index];
+                if (!route) return;
+
+                // Handle External Route Options (Google Maps / OSM)
+                if (route.isExternal) {
+                    let externalUrl = '';
+                    const destLat = this.state.currentTarget.lat;
+                    const destLng = this.state.currentTarget.lng;
+                    if (route.type === 'gmaps') {
+                        externalUrl = `https://www.google.com/maps/dir/?api=1&destination=${destLat},${destLng}`;
+                    }
+                    window.open(externalUrl, '_blank');
+                    return; // Jangan update internal state
+                }
+
+                this.state.selectedRouteIndex = index;
                 this.state.currentRouteSegments = route.segments;
                 this.state.currentParking = route.parking;
                 this.analyzeTurns(route.segments, [this.state.currentTarget.lng, this.state.currentTarget.lat]);
@@ -1741,7 +1798,7 @@
                 const allCoords = [];
                 
                 this.state.availableRoutes.forEach((route, idx) => {
-                    if (idx === this.state.selectedRouteIndex) return; 
+                    if (idx === this.state.selectedRouteIndex || route.isExternal) return; 
                     const coords = route.segments.map(seg => seg.start); coords.push(route.segments[route.segments.length-1].end);
                     const l = L.polyline(coords, { color: '#9ca3af', weight: 8, opacity: 0.7, lineJoin: 'round' }).addTo(this.state.map);
                     this.state.routeLayers.push(l);
@@ -1797,8 +1854,7 @@
             clearRouteLayers() { this.state.routeLayers.forEach(layer => this.state.map.removeLayer(layer)); this.state.routeLayers = []; }
 
             renderCustomRouteInfo(routeData, isSilent = false) {
-                const totalDistMeters = routeData.totalDist; 
-                const timeMinutes = routeData.timeMinutes;
+                const totalDistMeters = routeData.totalDist; const timeMinutes = routeData.timeMinutes;
                 this.state.initialRouteDistance = totalDistMeters;
 
                 const arrivalTime = new Date(); arrivalTime.setMinutes(arrivalTime.getMinutes() + timeMinutes);
@@ -1826,11 +1882,15 @@
                                 const btn = document.createElement('button');
                                 btn.className = `route-chip flex-shrink-0 ${idx === this.state.selectedRouteIndex ? 'active' : ''}`;
                                 
-                                let statusTag = '';
-                                if(altRoute.name.includes('Tercepat')) statusTag = '<span class="text-green-600 route-badge bg-green-100">🚀 Tercepat</span>';
-                                else statusTag = '<span class="text-blue-600 route-badge bg-blue-100">🔄 Alternatif</span>';
+                                if (altRoute.isExternal) {
+                                    btn.innerHTML = `<span class="text-blue-600 route-badge bg-blue-100">🌍 Rute Luar</span><div><span class="font-bold text-[#0e3160]">${altRoute.name}</span></div>`;
+                                } else {
+                                    let statusTag = '';
+                                    if(altRoute.name.includes('Tercepat')) statusTag = '<span class="text-green-600 route-badge bg-green-100">🚀 Tercepat</span>';
+                                    else statusTag = '<span class="text-blue-600 route-badge bg-blue-100">🔄 Alternatif</span>';
+                                    btn.innerHTML = `${statusTag}<div><span class="font-bold text-[#0e3160]">${altRoute.timeMinutes} mnt</span> <span class="text-gray-500 font-normal">(${altRoute.totalDist} m)</span></div>`;
+                                }
 
-                                btn.innerHTML = `${statusTag}<div><span class="font-bold text-[#0e3160]">${altRoute.timeMinutes} mnt</span> <span class="text-gray-500 font-normal">(${altRoute.totalDist} m)</span></div>`;
                                 btn.addEventListener('click', () => this.selectRoute(idx, true)); 
                                 this.DOM.routeOptionsContainer.appendChild(btn);
                             });
