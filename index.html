@@ -5,17 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="theme-color" content="#0e3160">
     <meta name="description" content="Aplikasi Navigasi Kawasan Dinas PUPR Kabupaten Garut">
-    <title>Navigasi PUPR Garut</title>
+    <title>Navigasi PUPR Garut - SPA Advanced</title>
     
+    <!-- Resource Preloading untuk Performa Core Web Vitals -->
     <link rel="preload" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" as="style">
     <link rel="preload" href="https://cdn.tailwindcss.com" as="script">
 
+    <!-- Dependencies -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- Turf.js untuk komputasi spasial & Dijkstra kustom -->
     <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
+    <!-- Internal Styles (CSS Variables & Custom Animations) -->
     <style>
         :root {
             --pu-blue: #0e3160;
@@ -24,8 +26,9 @@
             --sheet-height: 140px;
         }
 
-        html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; font-family: system-ui, sans-serif; -webkit-tap-highlight-color: transparent; }
+        html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; font-family: system-ui, -apple-system, sans-serif; -webkit-tap-highlight-color: transparent; }
 
+        /* 3D Map Transform based on State */
         body:not(.is-navigating) #map {
             transform: translateY(0) rotateZ(var(--map-heading, 0deg));
             transform-origin: center center;
@@ -38,11 +41,8 @@
             transition: transform 1.5s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
-        .map-dark .leaflet-tile-pane {
-            filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
-        }
+        .map-dark .leaflet-tile-pane { filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%); }
 
-        /* CUSTOM ANIMATIONS */
         @keyframes fadeInUp { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
         .animate-fade-in-up { animation: fadeInUp 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards; opacity: 0; }
 
@@ -50,58 +50,21 @@
         .leaflet-marker-icon:not(.user-dot-container):not(.nav-arrow-container):not(.parkir-icon) { animation: dropIn 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
 
         @keyframes shimmer { 0% { background-position: -1000px 0; } 100% { background-position: 1000px 0; } }
-        .skeleton {
-            background: #f6f7f8;
-            background-image: linear-gradient(to right, #f6f7f8 0%, #edeef1 20%, #f6f7f8 40%, #f6f7f8 100%);
-            background-repeat: no-repeat; background-size: 1000px 100%;
-            animation: shimmer 1.5s infinite linear; border-radius: 4px;
-        }
+        .skeleton { background: #f6f7f8; background-image: linear-gradient(to right, #f6f7f8 0%, #edeef1 20%, #f6f7f8 40%, #f6f7f8 100%); background-repeat: no-repeat; background-size: 1000px 100%; animation: shimmer 1.5s infinite linear; border-radius: 4px; }
 
-        /* FITUR: KOMPAS / VIEW CONE */
-        .user-dot-container {
-            position: relative;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .user-dot {
-            width: 20px; height: 20px;
-            background-color: var(--pu-yellow);
-            border: 3px solid var(--pu-blue); border-radius: 50%;
-            box-shadow: 0 0 10px rgba(14, 49, 96, 0.6); position: relative;
-            z-index: 2;
-        }
-        .user-dot::after {
-            content: ''; position: absolute; top: -6px; left: -6px; right: -6px; bottom: -6px;
-            border: 2px solid var(--pu-yellow); border-radius: 50%;
-            animation: pulse 2s infinite; opacity: 0;
-        }
-        .view-cone {
-            position: absolute;
-            width: 80px; height: 80px;
-            background: radial-gradient(circle at 50% 100%, rgba(26,115,232,0.4) 0%, rgba(26,115,232,0) 60%);
-            clip-path: polygon(15% 0, 85% 0, 50% 100%);
-            transform-origin: 50% 100%;
-            transform: translateY(-40px) rotate(0deg); /* Diupdate via JS */
-            z-index: 1;
-            transition: transform 0.1s linear;
-        }
+        /* Kompas & GPS Indicators */
+        .user-dot-container { position: relative; display: flex; align-items: center; justify-content: center; }
+        .user-dot { width: 20px; height: 20px; background-color: var(--pu-yellow); border: 3px solid var(--pu-blue); border-radius: 50%; box-shadow: 0 0 10px rgba(14, 49, 96, 0.6); position: relative; z-index: 2; }
+        .user-dot::after { content: ''; position: absolute; top: -6px; left: -6px; right: -6px; bottom: -6px; border: 2px solid var(--pu-yellow); border-radius: 50%; animation: pulse 2s infinite; opacity: 0; }
+        .view-cone { position: absolute; width: 80px; height: 80px; background: radial-gradient(circle at 50% 100%, rgba(26,115,232,0.4) 0%, rgba(26,115,232,0) 60%); clip-path: polygon(15% 0, 85% 0, 50% 100%); transform-origin: 50% 100%; transform: translateY(-40px) rotate(0deg); z-index: 1; transition: transform 0.1s linear; }
 
         @keyframes pulse { 0% { transform: scale(0.5); opacity: 1; } 100% { transform: scale(1.5); opacity: 0; } }
-
         @keyframes routeFlow { 0% { stroke-dashoffset: 50; } 100% { stroke-dashoffset: 0; } }
-        .route-path-animated {
-            animation: routeFlow 1s linear infinite;
-            filter: drop-shadow(0px 0px 4px rgba(255, 255, 255, 0.9));
-        }
-
+        .route-path-animated { animation: routeFlow 1s linear infinite; filter: drop-shadow(0px 0px 4px rgba(255, 255, 255, 0.9)); }
         .nav-arrow-container { filter: drop-shadow(0px 6px 4px rgba(0,0,0,0.4)); }
-        .nav-arrow-svg {
-            width: 100%; height: 100%;
-            transition: transform 1.5s cubic-bezier(0.4, 0, 0.2, 1);
-        }
+        .nav-arrow-svg { width: 100%; height: 100%; transition: transform 1.5s cubic-bezier(0.4, 0, 0.2, 1); }
 
-        /* UI COMPONENTS */
+        /* UI Components */
         .bottom-sheet { transform: translateY(120%); transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); will-change: transform; }
         .sheet-active { transform: translateY(0); }
         .sheet-minimized { transform: translateY(calc(100% - var(--sheet-height))); }
@@ -124,55 +87,84 @@
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         
-        #toast-msg {
-            transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
-            pointer-events: none;
-            opacity: 0;
-            transform: translate(-50%, -20px);
-        }
-        #toast-msg.show {
-            opacity: 1;
-            transform: translate(-50%, 0);
-        }
+        #toast-msg { transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out; pointer-events: none; opacity: 0; transform: translate(-50%, -20px); }
+        #toast-msg.show { opacity: 1; transform: translate(-50%, 0); }
+
+        .route-chip { padding: 6px 12px; border-radius: 16px; font-size: 11px; font-weight: bold; white-space: nowrap; cursor: pointer; transition: all 0.2s; border: 1px solid #e5e7eb; }
+        .route-chip.active { background-color: #0e3160; color: white; border-color: #0e3160; }
+        .route-chip:not(.active) { background-color: white; color: #6b7280; }
 
         .leaflet-bottom.leaflet-left { margin-bottom: 160px; z-index: 900; }
         @media (min-width: 768px) { .leaflet-bottom.leaflet-left { margin-left: 420px; margin-bottom: 20px; } }
-
-        /* FITUR: Kustomisasi Pop-up Leaflet */
         .leaflet-popup-content-wrapper { padding: 0 !important; border-radius: 12px !important; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.2) !important; }
         .leaflet-popup-content { margin: 0 !important; width: 220px !important; }
         .leaflet-popup-close-button { color: white !important; text-shadow: 0 1px 2px rgba(0,0,0,0.5); }
-        
-        /* FITUR BARU: Hapus background bawaan divIcon Leaflet */
         .custom-pin-marker { background: transparent; border: none; }
+
+        /* [FITUR BARU 8] Indoor Navigation Floor Control */
+        .floor-control { position: absolute; right: 1rem; top: 50%; transform: translateY(-50%); z-index: 1000; display: flex; flex-direction: column; gap: 0.5rem; background: rgba(255,255,255,0.9); padding: 0.25rem; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); backdrop-filter: blur(4px); }
+        .floor-btn { width: 40px; height: 40px; border-radius: 8px; font-weight: 900; font-size: 13px; color: #4b5563; transition: all 0.2s; display: flex; align-items: center; justify-content: center; }
+        .floor-btn.active { background: #0e3160; color: white; box-shadow: inset 0 2px 4px rgba(0,0,0,0.3); }
+
+        /* [FITUR BARU 9] Search Engine Results */
+        #search-results-container { position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: white; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.15); max-height: 250px; overflow-y: auto; z-index: 50; display: none; border: 1px solid #f3f4f6; }
+        #search-results-container.active { display: block; }
+        .search-item { padding: 12px 16px; border-bottom: 1px solid #f3f4f6; display: flex; align-items: center; gap: 12px; cursor: pointer; transition: background 0.2s; }
+        .search-item:last-child { border-bottom: none; }
+        .search-item:hover { background: #f9fafb; }
+
+        /* [FITUR BARU 7] AR Navigation Overlay */
+        .ar-view { position: fixed; inset: 0; z-index: 9999; background: black; display: none; flex-direction: column; }
+        .ar-view.active { display: flex; }
+        #ar-video { width: 100%; height: 100%; object-fit: cover; position: absolute; inset: 0; }
+        #ar-overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; background: linear-gradient(to bottom, rgba(0,0,0,0.3) 0%, transparent 20%, transparent 80%, rgba(0,0,0,0.4) 100%); }
+        #ar-arrow-container { perspective: 1000px; transform-style: preserve-3d; }
+        #ar-arrow { font-size: 10rem; filter: drop-shadow(0 10px 15px rgba(0,0,0,0.7)); transition: transform 0.15s ease-out; transform-origin: center center; }
+        
+        .fav-btn { transition: transform 0.2s, color 0.2s; }
+        .fav-btn.is-fav { color: #facc15; transform: scale(1.1); filter: drop-shadow(0 2px 4px rgba(250,204,21,0.4)); }
     </style>
 </head>
 <body class="bg-gray-50 text-gray-800">
 
-    <div id="toast-msg" class="fixed top-20 md:top-24 left-1/2 z-[3000] px-6 py-3 rounded-full text-sm font-bold text-center shadow-lg w-max max-w-[90vw]">
+    <!-- Global Toast Notification -->
+    <div id="toast-msg" role="alert" aria-live="assertive" class="fixed top-20 md:top-24 left-1/2 z-[3000] px-6 py-3 rounded-full text-sm font-bold text-center shadow-lg w-max max-w-[90vw]">
         Pesan Notifikasi
+    </div>
+
+    <!-- [FITUR BARU 7] AR Video Container -->
+    <div id="ar-container" class="ar-view">
+        <video id="ar-video" autoplay playsinline></video>
+        <div id="ar-overlay">
+            <div id="ar-instruction" class="text-white text-2xl font-black text-center mb-8 drop-shadow-md px-4 bg-black/30 py-2 rounded-2xl backdrop-blur-sm">Lurus Terus</div>
+            <div id="ar-arrow-container">
+                <div id="ar-arrow">⬆️</div>
+            </div>
+            <div id="ar-dist" class="text-[#facc15] text-xl font-bold mt-8 drop-shadow-md">-- m</div>
+        </div>
+        <button id="btn-close-ar" class="absolute top-8 right-6 bg-white/20 backdrop-blur-md border border-white/40 text-white p-3 rounded-full font-bold z-10 shadow-lg active:scale-90" aria-label="Tutup AR">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+        </button>
     </div>
 
     <!-- Top Navigation Overlay -->
     <header id="nav-header" class="show-on-nav absolute top-0 left-0 right-0 md:top-4 md:left-4 md:right-auto md:w-[400px] md:rounded-2xl z-[2000] bg-[#0e3160] border-b-4 md:border-b-0 text-white p-4 shadow-xl transition-all" role="banner">
         <div class="flex items-center gap-4 max-w-md mx-auto">
-            <div class="p-2 bg-[#facc15] text-[#0e3160] rounded-full shadow-inner animate-pulse" aria-hidden="true">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
-                </svg>
-            </div>
+            <div id="nav-turn-icon" class="p-2 bg-[#facc15] text-[#0e3160] rounded-full shadow-inner flex items-center justify-center text-2xl w-12 h-12 shrink-0 transition-transform duration-300" aria-hidden="true">⬆️</div>
             <div class="flex-1 min-w-0">
                 <p id="top-instruction" class="text-xl font-bold leading-tight truncate transition-colors duration-300" aria-live="polite">Mencari rute...</p>
-                <p id="top-distance" class="text-sm text-[#facc15] font-semibold truncate">--</p>
+                <p id="top-distance" class="text-sm text-[#facc15] font-semibold truncate mt-0.5">--</p>
+                <div class="w-full bg-[#0a2344] rounded-full h-1.5 mt-1.5 overflow-hidden shadow-inner" aria-hidden="true">
+                    <div id="nav-progress-bar" class="bg-[#facc15] h-full rounded-full transition-all duration-500 ease-out" style="width: 0%"></div>
+                </div>
             </div>
-            <button id="btn-stop-nav" class="shrink-0 bg-red-500 hover:bg-red-600 active:scale-95 transition-all p-2 rounded-lg text-xs font-bold uppercase tracking-wider shadow-md">Selesai</button>
+            <button id="btn-stop-nav" aria-label="Hentikan Navigasi" class="shrink-0 bg-red-500 hover:bg-red-600 active:scale-95 transition-all p-2 rounded-lg text-xs font-bold uppercase tracking-wider shadow-md">Selesai</button>
         </div>
     </header>
 
-    <!-- Search Area -->
+    <!-- UI Pencarian & Filter -->
     <div class="hide-on-nav absolute top-3 left-3 right-3 md:top-4 md:left-4 md:right-auto md:w-[400px] z-[1000] mx-auto md:mx-0 flex flex-col gap-2 animate-fade-in-up" style="animation-delay: 100ms;">
-        <div class="bg-white rounded-3xl shadow-lg flex flex-col border border-gray-100 focus-within:ring-2 focus-within:ring-[#0e3160] transition-all duration-300 overflow-hidden">
-            
+        <div class="bg-white rounded-3xl shadow-lg flex flex-col border border-gray-100 focus-within:ring-2 focus-within:ring-[#0e3160] transition-all duration-300 overflow-visible relative">
             <div class="flex relative">
                 <div class="flex flex-col items-center w-12 pt-5 pb-3">
                     <div class="w-3 h-3 rounded-full border-2 border-[#1a73e8] bg-blue-50 z-10"></div>
@@ -186,198 +178,196 @@
                             <option value="gps" selected>📍 Lokasi Saat Ini (GPS)</option>
                         </select>
                     </div>
-                    <div class="py-2 min-w-0 flex items-center">
-                        <select id="select-tujuan" aria-label="Pilih lokasi tujuan" class="flex-1 w-full bg-transparent outline-none text-[#0e3160] font-bold text-sm sm:text-base appearance-none truncate cursor-pointer transition-colors">
-                            <option value="" disabled selected>Mau ke mana?</option>
-                        </select>
+                    <div class="py-2 min-w-0 flex items-center relative">
+                        <!-- [FITUR BARU 9] Text Input Search menggantikan Select -->
+                        <input type="text" id="input-search-tujuan" placeholder="Mau ke mana? (Cari ruangan/fasilitas)" autocomplete="off" class="flex-1 w-full bg-transparent outline-none text-[#0e3160] font-bold text-sm sm:text-base truncate transition-colors placeholder:font-normal placeholder:text-gray-400">
                     </div>
                 </div>
 
-                <div class="w-14 flex flex-col items-center justify-center border-l border-gray-100 bg-gray-50/50 shrink-0">
-                    <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/d/d3/Lambang_Kabupaten_Garut.png/512px-Lambang_Kabupaten_Garut.png" onerror="this.src='https://upload.wikimedia.org/wikipedia/commons/d/d3/Lambang_Kabupaten_Garut.png'" class="h-7 w-7 object-contain drop-shadow-sm transition-transform hover:scale-110" alt="Logo Garut">
+                <div class="w-14 flex flex-col items-center justify-center border-l border-gray-100 bg-gray-50/50 shrink-0 rounded-tr-3xl" aria-hidden="true">
+                    <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/d/d3/Lambang_Kabupaten_Garut.png/512px-Lambang_Kabupaten_Garut.png" onerror="this.style.display='none'" class="h-7 w-7 object-contain drop-shadow-sm transition-transform hover:scale-110" alt="Logo Garut">
                 </div>
             </div>
             
-            <div class="flex bg-gray-100 p-1.5 gap-1 border-t border-gray-200" id="mode-selector">
-                <button onclick="window.puprApp.setTransportMode('jalan_kaki')" id="btn-mode-jalan_kaki" class="flex-1 py-1.5 text-[11px] sm:text-xs font-bold rounded-2xl bg-[#0e3160] text-white transition-all shadow-sm truncate">
-                    🚶‍♂️ Jalan
-                </button>
-                <button onclick="window.puprApp.setTransportMode('motor')" id="btn-mode-motor" class="flex-1 py-1.5 text-[11px] sm:text-xs font-bold rounded-2xl text-gray-500 hover:bg-gray-200 transition-all truncate">
-                    🏍️ Motor
-                </button>
-                <button onclick="window.puprApp.setTransportMode('mobil')" id="btn-mode-mobil" class="flex-1 py-1.5 text-[11px] sm:text-xs font-bold rounded-2xl text-gray-500 hover:bg-gray-200 transition-all truncate">
-                    🚗 Mobil
-                </button>
+            <!-- Modal Dropdown Search Results -->
+            <ul id="search-results-container" class="custom-scroll"></ul>
+
+            <div class="flex bg-gray-100 p-1.5 gap-1 border-t border-gray-200 rounded-b-3xl" id="mode-selector" role="group" aria-label="Pilihan Moda Transportasi">
+                <button onclick="window.puprApp.setTransportMode('jalan_kaki')" id="btn-mode-jalan_kaki" aria-label="Moda Jalan Kaki" class="flex-1 py-1.5 text-[11px] sm:text-xs font-bold rounded-2xl bg-[#0e3160] text-white transition-all shadow-sm truncate">🚶‍♂️ Jalan</button>
+                <button onclick="window.puprApp.setTransportMode('motor')" id="btn-mode-motor" aria-label="Moda Sepeda Motor" class="flex-1 py-1.5 text-[11px] sm:text-xs font-bold rounded-2xl text-gray-500 hover:bg-gray-200 transition-all truncate">🏍️ Motor</button>
+                <button onclick="window.puprApp.setTransportMode('mobil')" id="btn-mode-mobil" aria-label="Moda Mobil" class="flex-1 py-1.5 text-[11px] sm:text-xs font-bold rounded-2xl text-gray-500 hover:bg-gray-200 transition-all truncate">🚗 Mobil</button>
             </div>
         </div>
 
-        <div class="flex overflow-x-auto hide-scrollbar gap-2 px-1 pb-1 mt-1">
-            <button onclick="window.puprApp.handleLocationSelect('toilet_1')" class="shrink-0 bg-white/90 backdrop-blur border border-gray-200 shadow-sm rounded-full px-3 py-1.5 text-[11px] sm:text-xs font-semibold text-[#0e3160] hover:bg-[#0e3160] hover:text-white active:scale-95 transition-all flex items-center gap-1">🚻 Toilet</button>
-            <button onclick="window.puprApp.handleLocationSelect('mushala')" class="shrink-0 bg-white/90 backdrop-blur border border-gray-200 shadow-sm rounded-full px-3 py-1.5 text-[11px] sm:text-xs font-semibold text-[#0e3160] hover:bg-[#0e3160] hover:text-white active:scale-95 transition-all flex items-center gap-1">🕌 Mushala</button>
-            <button onclick="window.puprApp.handleLocationSelect('kantin_1')" class="shrink-0 bg-white/90 backdrop-blur border border-gray-200 shadow-sm rounded-full px-3 py-1.5 text-[11px] sm:text-xs font-semibold text-[#0e3160] hover:bg-[#0e3160] hover:text-white active:scale-95 transition-all flex items-center gap-1">☕ Kantin</button>
-            <button onclick="window.puprApp.handleLocationSelect('perpus')" class="shrink-0 bg-white/90 backdrop-blur border border-gray-200 shadow-sm rounded-full px-3 py-1.5 text-[11px] sm:text-xs font-semibold text-[#0e3160] hover:bg-[#0e3160] hover:text-white active:scale-95 transition-all flex items-center gap-1">📚 Perpus</button>
+        <div class="flex overflow-x-auto hide-scrollbar gap-2 px-1 pb-1 mt-1" role="group" aria-label="Filter Kategori Cepat">
+            <!-- [FITUR BARU 10] Filter Favorit -->
+            <button onclick="window.puprApp.showFavorites()" aria-label="Tampilkan Favorit" class="shrink-0 bg-white/90 backdrop-blur border border-gray-200 shadow-sm rounded-full px-3 py-1.5 text-[11px] sm:text-xs font-semibold text-yellow-600 hover:bg-yellow-50 active:scale-95 transition-all flex items-center gap-1">⭐ Favorit</button>
+            <button onclick="window.puprApp.searchCategory('Toilet')" class="shrink-0 bg-white/90 backdrop-blur border border-gray-200 shadow-sm rounded-full px-3 py-1.5 text-[11px] sm:text-xs font-semibold text-[#0e3160] hover:bg-[#0e3160] hover:text-white active:scale-95 transition-all flex items-center gap-1">🚻 Toilet</button>
+            <button onclick="window.puprApp.searchCategory('Mushala')" class="shrink-0 bg-white/90 backdrop-blur border border-gray-200 shadow-sm rounded-full px-3 py-1.5 text-[11px] sm:text-xs font-semibold text-[#0e3160] hover:bg-[#0e3160] hover:text-white active:scale-95 transition-all flex items-center gap-1">🕌 Mushala</button>
+            <button onclick="window.puprApp.searchCategory('Kantin')" class="shrink-0 bg-white/90 backdrop-blur border border-gray-200 shadow-sm rounded-full px-3 py-1.5 text-[11px] sm:text-xs font-semibold text-[#0e3160] hover:bg-[#0e3160] hover:text-white active:scale-95 transition-all flex items-center gap-1">☕ Kantin</button>
         </div>
     </div>
 
-    <!-- Map Container -->
+    <!-- Peta Utama -->
     <div id="map-wrapper" class="absolute inset-0 overflow-hidden z-[1] bg-[#e5e7eb]">
-        <main id="map" class="absolute w-[200vw] h-[200vh] -left-[50vw] -top-[50vh]"></main>
+        <main id="map" role="region" aria-label="Peta Navigasi Interaktif" class="absolute w-[130vmax] h-[130vmax] -left-[15vmax] -top-[15vmax]"></main>
     </div>
 
-    <!-- Tombol Re-Center -->
-    <button id="btn-recenter" class="hidden absolute bottom-44 md:bottom-12 left-1/2 -translate-x-1/2 z-[2000] rounded-full bg-[#1a73e8] px-4 py-2.5 shadow-[0_4px_15px_rgba(26,115,232,0.4)] items-center justify-center gap-2 text-white font-bold text-sm hover:bg-blue-700 active:scale-90 transition-all duration-300">
+    <!-- [FITUR BARU 8] Indoor Floor Control -->
+    <div class="floor-control hide-on-nav">
+        <button id="btn-floor-l2" class="floor-btn" onclick="window.puprApp.setFloor('Lantai 2')">L2</button>
+        <button id="btn-floor-l1" class="floor-btn" onclick="window.puprApp.setFloor('Lantai 1')">L1</button>
+        <button id="btn-floor-od" class="floor-btn" onclick="window.puprApp.setFloor('Outdoor')">OD</button>
+        <button id="btn-floor-all" class="floor-btn active" onclick="window.puprApp.setFloor('Semua')">ALL</button>
+    </div>
+
+    <!-- Tombol Fokus Kembali -->
+    <button id="btn-recenter" aria-label="Fokuskan kembali ke lokasi saat ini" class="hidden absolute bottom-44 md:bottom-12 left-1/2 -translate-x-1/2 z-[2000] rounded-full bg-[#1a73e8] px-4 py-2.5 shadow-[0_4px_15px_rgba(26,115,232,0.4)] items-center justify-center gap-2 text-white font-bold text-sm hover:bg-blue-700 active:scale-90 transition-all duration-300">
         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 22v-4M12 2V6M22 12h-4M2 12h4M12 15a3 3 0 100-6 3 3 0 000 6z" /></svg>
         Kembali ke Lokasi
     </button>
 
-    <!-- Floating Action Buttons -->
-    <div class="hide-on-nav absolute bottom-6 right-4 md:bottom-8 md:right-8 z-[1000] flex flex-col gap-3 animate-fade-in-up" style="animation-delay: 300ms;">
-        <button id="btn-location" class="w-12 h-12 rounded-full bg-white shadow-lg flex items-center justify-center text-red-500 hover:bg-gray-50 active:scale-90 transition-transform duration-200" aria-label="Aktifkan GPS">
+    <!-- Tombol Aksi Kanan Bawah -->
+    <div class="absolute bottom-6 right-4 md:bottom-8 md:right-8 z-[1000] flex flex-col gap-3 animate-fade-in-up" style="animation-delay: 300ms;">
+        <!-- [FITUR BARU 7] Tombol Akses AR Mode -->
+        <button id="btn-ar-mode" class="show-on-nav w-12 h-12 rounded-full bg-[#8b5cf6] shadow-[0_4px_15px_rgba(139,92,246,0.5)] items-center justify-center text-white hover:bg-purple-700 active:scale-90 transition-transform duration-200" aria-label="Mulai AR Navigasi">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+        </button>
+
+        <button id="btn-location" class="hide-on-nav w-12 h-12 rounded-full bg-white shadow-lg flex items-center justify-center text-red-500 hover:bg-gray-50 active:scale-90 transition-transform duration-200" aria-label="Perbarui Lokasi GPS">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>
         </button>
-        <button id="btn-search-focus" class="w-14 h-14 rounded-full bg-[#facc15] shadow-[0_4px_15px_rgba(250,204,21,0.5)] flex items-center justify-center text-[#0e3160] hover:bg-yellow-300 active:scale-90 hover:-translate-y-1 transition-all duration-200">
+        <button id="btn-search-focus" class="hide-on-nav w-14 h-14 rounded-full bg-[#facc15] shadow-[0_4px_15px_rgba(250,204,21,0.5)] flex items-center justify-center text-[#0e3160] hover:bg-yellow-300 active:scale-90 hover:-translate-y-1 transition-all duration-200" aria-label="Buka Pencarian Tujuan">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" /></svg>
         </button>
     </div>
 
-    <!-- Bottom Info Sheet -->
-    <aside id="info-sheet" class="bottom-sheet absolute bottom-0 left-0 right-0 md:bottom-4 md:left-4 md:w-[400px] md:right-auto bg-white z-[1100] rounded-t-3xl md:rounded-3xl shadow-[0_-4px_25px_rgba(14,49,96,0.15)] md:shadow-[4px_4px_25px_rgba(14,49,96,0.15)] mx-auto border-t-[6px] md:border-t-0 md:border-l-[6px] border-[#0e3160] flex flex-col" aria-hidden="true">
-        <div id="sheet-handle" class="w-full flex justify-center py-4 cursor-pointer hover:bg-gray-50 transition-colors rounded-t-3xl md:rounded-t-3xl" tabindex="0" onclick="window.puprApp.toggleSheet()">
+    <!-- Panel Informasi Lokasi (Bottom Sheet) -->
+    <aside id="info-sheet" role="dialog" aria-labelledby="sheet-title" class="bottom-sheet absolute bottom-0 left-0 right-0 md:bottom-4 md:left-4 md:w-[400px] md:right-auto bg-white z-[1100] rounded-t-3xl md:rounded-3xl shadow-[0_-4px_25px_rgba(14,49,96,0.15)] md:shadow-[4px_4px_25px_rgba(14,49,96,0.15)] mx-auto border-t-[6px] md:border-t-0 md:border-l-[6px] border-[#0e3160] flex flex-col" aria-hidden="true">
+        <div id="sheet-handle" role="button" aria-label="Tarik Panel Navigasi" class="w-full flex justify-center py-4 cursor-pointer hover:bg-gray-50 transition-colors rounded-t-3xl md:rounded-t-3xl" tabindex="0" onclick="window.puprApp.toggleSheet()">
             <div class="w-12 h-1.5 bg-gray-300 rounded-full transition-transform hover:scale-x-110"></div>
         </div>
         <div class="px-6 pb-8">
-            <div class="flex justify-between items-start mb-6">
-                <div>
-                    <h2 id="sheet-title" class="text-2xl font-black text-[#0e3160] leading-tight transition-all">Nama Lokasi</h2>
+            <div class="flex justify-between items-start mb-4">
+                <div class="flex-1">
+                    <div class="flex items-center gap-2">
+                        <h2 id="sheet-title" class="text-2xl font-black text-[#0e3160] leading-tight transition-all">Nama Lokasi</h2>
+                        <!-- [FITUR BARU 10] Tombol Bintang Favorit -->
+                        <button id="btn-toggle-fav" class="fav-btn text-2xl text-gray-300" aria-label="Tambah ke Favorit">⭐</button>
+                    </div>
                     <p id="sheet-meta" class="mt-1 transition-all">-- meter • -- menit</p>
                 </div>
-                <button id="btn-close-sheet" class="p-2 bg-gray-100 hover:bg-gray-200 hover:rotate-90 active:scale-90 rounded-full text-gray-500 transition-all duration-300">
+                <button id="btn-close-sheet" aria-label="Tutup Panel" class="p-2 bg-gray-100 hover:bg-gray-200 hover:rotate-90 active:scale-90 rounded-full text-gray-500 transition-all duration-300 ml-2 shrink-0">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
             </div>
             
-            <div id="instruksi-list" class="custom-scroll max-h-48 overflow-y-auto mb-6 pr-2 space-y-0" role="list"></div>
+            <div id="route-options-container" class="flex gap-2 mb-3 overflow-x-auto hide-scrollbar pb-1"></div>
+            <div id="instruksi-list" aria-live="polite" class="custom-scroll max-h-48 overflow-y-auto mb-6 pr-2 space-y-0" role="list"></div>
 
-            <button id="btn-start-nav" class="w-full bg-[#15803d] hover:bg-green-800 text-white py-4 rounded-2xl font-bold text-lg shadow-[0_4px_15px_rgba(21,128,61,0.4)] flex items-center justify-center gap-2 active:scale-95 hover:-translate-y-1 transition-all duration-300">
+            <button id="btn-start-nav" aria-label="Mulai Navigasi ke Tujuan" class="w-full bg-[#15803d] hover:bg-green-800 text-white py-4 rounded-2xl font-bold text-lg shadow-[0_4px_15px_rgba(21,128,61,0.4)] flex items-center justify-center gap-2 active:scale-95 hover:-translate-y-1 transition-all duration-300">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-[#facc15] animate-pulse" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5.14v14l11-7-11-7z" /></svg>
                 MULAI NAVIGASI
             </button>
         </div>
     </aside>
 
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
     <script>
+        "use strict";
+
+        const Utils = {
+            escapeHTML: function(str) {
+                if (!str) return '';
+                return String(str).replace(/[&<>'"]/g, tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag));
+            }
+        };
+
+        function debounce(fn, wait = 800) {
+            let t;
+            return function(...args) { clearTimeout(t); t = setTimeout(() => fn.apply(this, args), wait); };
+        }
+
+        const APP_DATA = {
+            PUSAT_KAWASAN: [-7.199150, 107.876920],
+            LOCATIONS: [
+                { id: 'r_rapat_lt2', name: 'R. Rapat PUPR', lat: -7.199195013352128, lng: 107.8764323309565, cat: 'Ruangan', floor: 'Lantai 2', hours: '08:00 - 16:00', img: 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=300&q=80' },
+                { id: 'r_bag_umum', name: 'R. Bagian Umum', lat: -7.199127459053137, lng: 107.8764557388671, cat: 'Ruangan', floor: 'Lantai 1', hours: '08:00 - 16:00', img: 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=300&q=80' },
+                { id: 'r_kadis', name: 'R. Kepala Dinas PUPR', lat: -7.199302999999999, lng: 107.8766727687966, cat: 'Ruangan', floor: 'Lantai 1', hours: 'Sesuai Janji Temu', img: 'https://images.unsplash.com/photo-1572025442646-3336eaa44c1e?w=300&q=80' },
+                { id: 'tugu', name: 'Tugu Dinas PUPR', lat: -7.199445559142169, lng: 107.876497345244, cat: 'Fasilitas', floor: 'Outdoor', hours: '24 Jam', img: 'https://images.unsplash.com/photo-1519817914152-2a67302ea2a1?w=300&q=80' },
+                { id: 'perpus', name: 'Perpustakaan Dinas PUPR', lat: -7.199297513006006, lng: 107.8767792147685, cat: 'Fasilitas', floor: 'Lantai 1', hours: '09:00 - 15:00', img: 'https://images.unsplash.com/photo-1521587760476-6c12a4b040da?w=300&q=80' },
+                { id: 'toilet_1', name: 'Toilet Umum', lat: -7.199265964781452, lng: 107.8768468857503, cat: 'Fasilitas', floor: 'Lantai 1', hours: '24 Jam', img: 'https://images.unsplash.com/photo-1620626011761-996317b8d101?w=300&q=80' },
+                { id: 'kantin_1', name: 'Kantin 1', lat: -7.19953732130551, lng: 107.8770373458637, cat: 'Fasilitas', floor: 'Outdoor', hours: '07:00 - 17:00', img: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=300&q=80' },
+                { id: 'mushala', name: 'Mushala', lat: -7.19922280465217, lng: 107.8774439325401, cat: 'Fasilitas', floor: 'Lantai 1', hours: '24 Jam', img: 'https://images.unsplash.com/photo-1519817914152-2a67302ea2a1?w=300&q=80' },
+                { id: 'bid_sda', name: 'Bid. SDA', lat: -7.199126475400946, lng: 107.8771628734081, cat: 'Bidang', floor: 'Lantai 1', hours: '08:00 - 16:00', img: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=300&q=80' },
+                { id: 'gerbang_2', name: 'Gerbang 2', lat: -7.198472501839531, lng: 107.876934788547, cat: 'Gerbang', floor: 'Outdoor', hours: '24 Jam', img: 'https://images.unsplash.com/photo-1519817914152-2a67302ea2a1?w=300&q=80' }
+            ],
+            PARKIRAN: [
+                { id: 'p1', name: 'Parkiran Bagian Umum', lat: -7.19896, lng: 107.87644, type: 'mobil', floor: 'Outdoor', hours: '24 Jam' },
+                { id: 'p2', name: 'Parkiran Kepala Dinas', lat: -7.19936, lng: 107.87650, type: 'mobil', floor: 'Outdoor', hours: '24 Jam' },
+                { id: 'p3', name: 'Parkiran Motor Bina Marga', lat: -7.19940, lng: 107.87683, type: 'motor', floor: 'Outdoor', hours: '24 Jam' },
+                { id: 'p6', name: 'Parkiran Pusat (SDA, Jaskon)', lat: -7.19929, lng: 107.87729, type: 'mobil', floor: 'Outdoor', hours: '24 Jam' }
+            ],
+            ROUTES_GEOJSON: {
+                "type": "FeatureCollection",
+                "features": [
+                    { "type": "Feature", "properties": { "tipe": "mobil" }, "geometry": { "type": "LineString", "coordinates": [[107.876446,-7.198845],[107.876523,-7.198935],[107.876525,-7.198986],[107.876517,-7.199155],[107.876565,-7.199393],[107.876698,-7.199422],[107.876841,-7.199493],[107.877029,-7.199437],[107.877183,-7.199331],[107.877296,-7.199145],[107.877316,-7.198914],[107.877296,-7.198753],[107.877203,-7.198631],[107.877069,-7.198464],[107.876981,-7.198460],[107.876927,-7.198591],[107.876962,-7.198632],[107.877159,-7.198617]] } },
+                    { "type": "Feature", "properties": { "tipe": "motor" }, "geometry": { "type": "LineString", "coordinates": [[107.877654,-7.200209],[107.877519,-7.200065],[107.877523,-7.199956],[107.877375,-7.199910],[107.877273,-7.199881],[107.877264,-7.199846],[107.877285,-7.199754],[107.877298,-7.199667],[107.877230,-7.199575],[107.877200,-7.199523],[107.877168,-7.199467],[107.877151,-7.199433]] } },
+                    { "type": "Feature", "properties": { "tipe": "jalan_kaki" }, "geometry": { "type": "LineString", "coordinates": [[107.876445,-7.198843],[107.876521,-7.198920],[107.876653,-7.198974],[107.876644,-7.199160],[107.876687,-7.199241],[107.876876,-7.199244],[107.876877,-7.199355],[107.876981,-7.199367],[107.877189,-7.199290],[107.877146,-7.199189],[107.877158,-7.198833],[107.876882,-7.198655],[107.877069,-7.198638],[107.877197,-7.198680],[107.877259,-7.198769],[107.877225,-7.199200],[107.877209,-7.199271],[107.877160,-7.199378],[107.877143,-7.199462]] } },
+                    { "type": "Feature", "properties": { "tipe": "jalan_kaki" }, "geometry": { "type": "LineString", "coordinates": [[107.876444,-7.198851],[107.876478,-7.198967],[107.876466,-7.199123],[107.876500,-7.199231],[107.876481,-7.199290],[107.876516,-7.199408],[107.876595,-7.199414],[107.876693,-7.199479],[107.876724,-7.199607],[107.876774,-7.199979],[107.876824,-7.200285],[107.876897,-7.200273],[107.876839,-7.200060],[107.876811,-7.199869],[107.876790,-7.199594],[107.876865,-7.199524],[107.876986,-7.199507],[107.877059,-7.199463],[107.877180,-7.199410],[107.877340,-7.199265],[107.877469,-7.199317],[107.877486,-7.199418],[107.877462,-7.199457]] } },
+                    { "type": "Feature", "properties": { "tipe": "jalan_kaki" }, "geometry": { "type": "LineString", "coordinates": [[107.877238,-7.199308],[107.877280,-7.199266],[107.877317,-7.199134],[107.877424,-7.199082],[107.877340,-7.198996],[107.877344,-7.198904],[107.877322,-7.198768],[107.877255,-7.198679],[107.877122,-7.198641],[107.876883,-7.198654]] } }
+                ]
+            }
+        };
+
         class PuprNavigationApp {
-            constructor() {
-                this.PUSAT_KAWASAN = [-7.199150, 107.876920]; 
+            constructor(data) {
+                this.DATA = data;
                 
-                // FITUR: Data Tambahan untuk Pop-up Panel
-                this.LOCATIONS = [
-                    { id: 'r_rapat_lt2', name: 'R. Rapat PUPR Lt. 2', lat: -7.199195013352128, lng: 107.8764323309565, cat: 'Ruangan', floor: 'Lantai 2', hours: '08:00 - 16:00', img: 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=300&q=80' },
-                    { id: 'r_bag_umum', name: 'R. Bagian Umum', lat: -7.199127459053137, lng: 107.8764557388671, cat: 'Ruangan', floor: 'Lantai 1', hours: '08:00 - 16:00', img: 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=300&q=80' },
-                    { id: 'r_kadis', name: 'R. Kepala Dinas PUPR', lat: -7.199302999999999, lng: 107.8766727687966, cat: 'Ruangan', floor: 'Lantai 1', hours: 'Sesuai Janji Temu', img: 'https://images.unsplash.com/photo-1572025442646-3336eaa44c1e?w=300&q=80' },
-                    { id: 'r_sekdis', name: 'R. Sekretaris Dinas PUPR', lat: -7.19921158622008, lng: 107.8765898550731, cat: 'Ruangan', floor: 'Lantai 1', hours: '08:00 - 16:00', img: 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=300&q=80' },
-                    { id: 'r_verif_keu', name: 'R. Verifikasi Bagian Keuangan', lat: -7.198981550411356, lng: 107.8766469685958, cat: 'Ruangan', floor: 'Lantai 1', hours: '08:00 - 15:00', img: 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=300&q=80' },
-                    { id: 'tugu', name: 'Tugu Dinas PUPR', lat: -7.199445559142169, lng: 107.876497345244, cat: 'Fasilitas', floor: 'Outdoor', hours: '24 Jam', img: 'https://images.unsplash.com/photo-1519817914152-2a67302ea2a1?w=300&q=80' },
-                    { id: 'perpus', name: 'Perpustakaan Dinas PUPR', lat: -7.199297513006006, lng: 107.8767792147685, cat: 'Fasilitas', floor: 'Lantai 1', hours: '09:00 - 15:00', img: 'https://images.unsplash.com/photo-1521587760476-6c12a4b040da?w=300&q=80' },
-                    { id: 'toilet_1', name: 'Toilet Umum', lat: -7.199265964781452, lng: 107.8768468857503, cat: 'Fasilitas', floor: 'Lantai 1', hours: '24 Jam', img: 'https://images.unsplash.com/photo-1620626011761-996317b8d101?w=300&q=80' },
-                    { id: 'bid_binamarga', name: 'Bid. Bina Marga', lat: -7.199551297191005, lng: 107.8769387354968, cat: 'Bidang', floor: 'Lantai 1', hours: '08:00 - 16:00', img: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=300&q=80' },
-                    { id: 'bid_taru', name: 'Bid. Penataan Ruang', lat: -7.199489275890892, lng: 107.8770918147753, cat: 'Bidang', floor: 'Lantai 1', hours: '08:00 - 16:00', img: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=300&q=80' },
-                    { id: 'kantin_1', name: 'Kantin 1', lat: -7.19953732130551, lng: 107.8770373458637, cat: 'Fasilitas', floor: 'Outdoor', hours: '07:00 - 17:00', img: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=300&q=80' },
-                    { id: 'kantin_2', name: 'Kantin 2', lat: -7.199077608829382, lng: 107.8774767640371, cat: 'Fasilitas', floor: 'Outdoor', hours: '07:00 - 17:00', img: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=300&q=80' },
-                    { id: 'r_arsip_lt2', name: 'R. Arsip Dinas Lt. 2', lat: -7.199571428766572, lng: 107.8771080438699, cat: 'Ruangan', floor: 'Lantai 2', hours: '08:00 - 16:00', img: 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=300&q=80' },
-                    { id: 'r_rapat_simbg', name: 'R. Rapat Konsultasi SIMBG Lt. 2', lat: -7.199490160788607, lng: 107.877425504076, cat: 'Ruangan', floor: 'Lantai 2', hours: '08:00 - 16:00', img: 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=300&q=80' },
-                    { id: 'gd_arsip', name: 'Gedung Arsip', lat: -7.199362587533257, lng: 107.8773825030212, cat: 'Gedung', floor: 'Lantai 1-2', hours: '08:00 - 16:00', img: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=300&q=80' },
-                    { id: 'mushala', name: 'Mushala', lat: -7.19922280465217, lng: 107.8774439325401, cat: 'Fasilitas', floor: 'Lantai 1', hours: '24 Jam', img: 'https://images.unsplash.com/photo-1519817914152-2a67302ea2a1?w=300&q=80' },
-                    { id: 'toilet_2', name: 'Toilet Umum 2', lat: -7.199311376480947, lng: 107.8775701923217, cat: 'Fasilitas', floor: 'Lantai 1', hours: '24 Jam', img: 'https://images.unsplash.com/photo-1620626011761-996317b8d101?w=300&q=80' },
-                    { id: 'r_rapat_sda', name: 'R. Rapat SDA', lat: -7.198999129148875, lng: 107.8773964440981, cat: 'Ruangan', floor: 'Lantai 1', hours: '08:00 - 16:00', img: 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=300&q=80' },
-                    { id: 'r_komir', name: 'R. KOMIR', lat: -7.198873101003608, lng: 107.8773937452003, cat: 'Ruangan', floor: 'Lantai 1', hours: '08:00 - 16:00', img: 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=300&q=80' },
-                    { id: 'bid_sda', name: 'Bid. SDA', lat: -7.199126475400946, lng: 107.8771628734081, cat: 'Bidang', floor: 'Lantai 1', hours: '08:00 - 16:00', img: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=300&q=80' },
-                    { id: 'bid_jaskon', name: 'Bid. Jasa Konstruksi', lat: -7.19892215200717, lng: 107.8771860420221, cat: 'Bidang', floor: 'Lantai 1', hours: '08:00 - 16:00', img: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=300&q=80' },
-                    { id: 'bid_bangunan', name: 'Bid. Bangunan', lat: -7.198754893561037, lng: 107.8771719225849, cat: 'Bidang', floor: 'Lantai 1', hours: '08:00 - 16:00', img: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=300&q=80' },
-                    { id: 'bid_amplp', name: 'Bid. AMPLP', lat: -7.19871964286781, lng: 107.8769446049371, cat: 'Bidang', floor: 'Lantai 1', hours: '08:00 - 16:00', img: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=300&q=80' },
-                    { id: 'upt_targid', name: 'UPT Tarogong Kidul', lat: -7.199765390998546, lng: 107.8766489100545, cat: 'UPT', floor: 'Lantai 1', hours: '08:00 - 16:00', img: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=300&q=80' },
-                    { id: 'upt_targal', name: 'UPT Tarogong Kaler', lat: -7.199840707166941, lng: 107.8766498235686, cat: 'UPT', floor: 'Lantai 1', hours: '08:00 - 16:00', img: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=300&q=80' },
-                    { id: 'upt_lab', name: 'UPT Laboratorium dan Pengujian', lat: -7.199750553017148, lng: 107.8769679082552, cat: 'UPT', floor: 'Lantai 1', hours: '08:00 - 16:00', img: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=300&q=80' },
-                    { id: 'lapangan', name: 'Lapangan Sepak Bola PUPR', lat: -7.200010579684227, lng: 107.8771985954403, cat: 'Fasilitas', floor: 'Outdoor', hours: '06:00 - 18:00', img: 'https://images.unsplash.com/photo-1519817914152-2a67302ea2a1?w=300&q=80' },
-                    { id: 'gerbang_2', name: 'Gerbang 2', lat: -7.198472501839531, lng: 107.876934788547, cat: 'Gerbang', floor: 'Outdoor', hours: '24 Jam', img: 'https://images.unsplash.com/photo-1519817914152-2a67302ea2a1?w=300&q=80' },
-                    { id: 'gerbang_3', name: 'Gerbang 3', lat: -7.200273371844594, lng: 107.8768400902341, cat: 'Gerbang', floor: 'Outdoor', hours: '24 Jam', img: 'https://images.unsplash.com/photo-1519817914152-2a67302ea2a1?w=300&q=80' }
-                ];
-
-                this.PARKIRAN = [
-                    { id: 'p1', name: 'Parkiran Bagian Umum', lat: -7.19896, lng: 107.87644, type: 'mobil' },
-                    { id: 'p2', name: 'Parkiran Kepala Dinas & R. Rapat', lat: -7.19936, lng: 107.87650, type: 'mobil' },
-                    { id: 'p3', name: 'Parkiran Motor Bina Marga', lat: -7.19940, lng: 107.87683, type: 'motor' },
-                    { id: 'p4', name: 'Parkiran Mobil Kantin & Penataan Ruang', lat: -7.19945, lng: 107.87683, type: 'mobil' },
-                    { id: 'p5', name: 'Parkiran Motor Verifikasi Keuangan', lat: -7.19893, lng: 107.87654, type: 'motor' },
-                    { id: 'p6', name: 'Parkiran Pusat (SDA, Jaskon, Mushala)', lat: -7.19929, lng: 107.87729, type: 'mobil' },
-                    { id: 'p7', name: 'Parkiran Gedung Arsip', lat: -7.19938, lng: 107.87745, type: 'mobil' },
-                    { id: 'p8', name: 'Parkiran Bidang Bangunan', lat: -7.19870, lng: 107.87728, type: 'mobil' },
-                    { id: 'p9', name: 'Parkiran Bidang AMPLP', lat: -7.19855, lng: 107.87686, type: 'mobil' }
-                ];
-
-                this.JALUR_KML_GEOJSON = {
-                    "type": "FeatureCollection",
-                    "features": [
-                        { "type": "Feature", "properties": { "tipe": "mobil" }, "geometry": { "type": "LineString", "coordinates": [[107.8764460902709,-7.198845017522707],[107.8765231437622,-7.198935953137513],[107.8765251857184,-7.198986103370058],[107.8765170075077,-7.199155538954024],[107.8765170509258,-7.199250296462648],[107.8765219370369,-7.199298031863793],[107.8765122366391,-7.199337955665585],[107.876565933029,-7.199393291261594],[107.8766386726305,-7.199403176651634],[107.8766987122628,-7.199422792228526],[107.8767423744532,-7.199457733996685],[107.8767848816092,-7.199484500929938],[107.8768410868955,-7.199493007358276],[107.8769071505857,-7.19949248020604],[107.8769624999952,-7.199471879512975],[107.8770298313088,-7.199437014607369],[107.8770834226315,-7.199407464104833],[107.8771297627693,-7.199371378306846],[107.8771838812348,-7.199331479998102],[107.8772306015831,-7.199278670335475],[107.8772741749624,-7.199214471475794],[107.8772965494452,-7.199145979136776],[107.8773052781285,-7.19901582209314],[107.8773169216892,-7.198914229996497],[107.8773059929433,-7.19882994798229],[107.877296221099,-7.1987530931346],[107.8772768683303,-7.198704034488654],[107.8772462922416,-7.198670781148287],[107.8772034849389,-7.198631621514911],[107.8771756968655,-7.198608107068942],[107.8771536643505,-7.198567388989926],[107.8771256714044,-7.198507913748471],[107.8770699074247,-7.198464986137174],[107.8770170114619,-7.198450715350951],[107.8769818285744,-7.198460236181417],[107.8769631340444,-7.198490587394124],[107.8769439865752,-7.198551651985838],[107.8769278765798,-7.198591625039619],[107.8769286685378,-7.198618850095097],[107.8769629807153,-7.198632236139108],[107.8770101946228,-7.198644148687235],[107.8770512592391,-7.198648148280227],[107.8770796216981,-7.198642064296556],[107.877110654735,-7.198633387745486],[107.877135247236,-7.198625945544156],[107.8771599026259,-7.198617186509458]] } },
-                        { "type": "Feature", "properties": { "tipe": "mobil" }, "geometry": { "type": "LineString", "coordinates": [[107.876642146737,-7.19938665943237],[107.8767857149288,-7.199391941083441],[107.8768990424514,-7.1993954871398],[107.8769964235226,-7.199402693032502],[107.8770563788916,-7.199404510090369],[107.8771262195793,-7.199410636512422],[107.877187429079,-7.199455388261654],[107.8772238573071,-7.199480268360182]] } },
-                        { "type": "Feature", "properties": { "tipe": "mobil" }, "geometry": { "type": "LineString", "coordinates": [[107.8767233567006,-7.199456914472279],[107.8767491508315,-7.199647212388089],[107.8767775749464,-7.199807338842332],[107.876799246586,-7.200003166374289],[107.8768328325794,-7.200152074330546],[107.8768689745675,-7.200283622612008]] } },
-                        { "type": "Feature", "properties": { "tipe": "mobil" }, "geometry": { "type": "LineString", "coordinates": [[107.8772785102484,-7.199221424146161],[107.8774616565463,-7.199328952819378],[107.8774210375914,-7.199423397184297],[107.8774616406928,-7.199446059648865],[107.8774880180985,-7.19937516612404],[107.8774960006813,-7.199331168723404],[107.8772868439651,-7.19920537350762]] } },
-                        { "type": "Feature", "properties": { "tipe": "motor" }, "geometry": { "type": "LineString", "coordinates": [[107.8776542981182,-7.200209131536348],[107.877593187007,-7.200146874581081],[107.8775193314763,-7.200065487174907],[107.8775233920997,-7.199956160416247],[107.8775195447512,-7.199951855498411],[107.8774882607519,-7.199921509855794],[107.8773752919795,-7.199910176480391],[107.8773126060269,-7.199897928133644],[107.877273131009,-7.199881890866017],[107.8772640680942,-7.199846612182697],[107.8772699794409,-7.199809181941458],[107.8772700726913,-7.199806958211971],[107.8772854816201,-7.199754715324549],[107.8772860602979,-7.199743073883194],[107.8772989728098,-7.199667397203091],[107.8772734628658,-7.199604930851364],[107.8772300994235,-7.199575374851407],[107.8772005242718,-7.199523925522459],[107.8771984457612,-7.199518871858623],[107.8771683938101,-7.199467956957795],[107.8771511506386,-7.199433728842902]] } },
-                        { "type": "Feature", "properties": { "tipe": "jalan_kaki" }, "geometry": { "type": "LineString", "coordinates": [[107.8764455257433,-7.198843088444235],[107.8765214152275,-7.19892051510011],[107.8765482149521,-7.198961838328936],[107.8766536250979,-7.198974299641713],[107.8766444591337,-7.199160561625845],[107.8766876608653,-7.199241215542958],[107.8768768270849,-7.199244739611664],[107.8768777967947,-7.19935516915046],[107.8769818533183,-7.199367044464474],[107.8770705318481,-7.199364303587997],[107.8771890436965,-7.199290302650306],[107.8771466556824,-7.199189769684751],[107.8771586774408,-7.198833122248007],[107.8771070341014,-7.198759175937508],[107.8768791556945,-7.198745142133879],[107.8768820510254,-7.198655219271433],[107.8770642106103,-7.198653308530437],[107.8770698168317,-7.198638946918773],[107.877150408727,-7.198655996815203],[107.8771973908809,-7.198680698966417],[107.8772594948562,-7.198769782942678],[107.8772569370356,-7.198860042202649],[107.8772318532973,-7.198865064002091],[107.8772258782654,-7.199200035666401],[107.8772290980724,-7.199230320479441],[107.8772099270495,-7.199271589497112],[107.8772257055065,-7.199312601792194],[107.8771601881721,-7.199378673368879],[107.8771218788537,-7.199432717009865],[107.8771433285353,-7.199462878473236]] } },
-                        { "type": "Feature", "properties": { "tipe": "jalan_kaki" }, "geometry": { "type": "LineString", "coordinates": [[107.8764447485788,-7.198851309176293],[107.8765098973901,-7.19892227406592],[107.8764780066566,-7.198967171582582],[107.8764563457024,-7.199034700843897],[107.8764660235683,-7.199123537393013],[107.8764914726098,-7.199183252124408],[107.8765004959787,-7.199231300840182],[107.8764921600051,-7.199261526411114],[107.8764810674256,-7.199290220479688],[107.8764658995338,-7.199320288751761],[107.8765164103196,-7.199408573107445],[107.8765492704709,-7.199437506144612],[107.876595649313,-7.199414571545498],[107.8766448031933,-7.199440362866389],[107.8766937126539,-7.199479352990953],[107.8767087772943,-7.199508934274736],[107.8767241702536,-7.199607343237932],[107.87674323656,-7.199696213494089],[107.8767434651333,-7.199729545278728],[107.8767741063939,-7.199979813600507],[107.8768243530227,-7.200285488780365],[107.8768972631933,-7.200273266069145],[107.8768398723913,-7.200060541679351],[107.8768118681622,-7.199869462825156],[107.8767910839977,-7.199719650358047],[107.8767900650158,-7.199594107975511],[107.8767703752161,-7.199560760737819],[107.8768313434414,-7.199535494321194],[107.8768657255612,-7.199524436725815],[107.876938268178,-7.199513562701832],[107.8769862081069,-7.199507595368049],[107.877020940047,-7.199501476530197],[107.8770597156043,-7.199463881123322],[107.8770843708886,-7.199442542973675],[107.8771800824539,-7.19941093761136],[107.8772509372316,-7.199426107224308],[107.877340233827,-7.199265956722446],[107.8774019480588,-7.199284351028839],[107.8774699092644,-7.199317110573625],[107.8775141161551,-7.199343430485431],[107.8774864159437,-7.199418313359132],[107.877462201565,-7.199457456050864]] } },
-                        { "type": "Feature", "properties": { "tipe": "jalan_kaki" }, "geometry": { "type": "LineString", "coordinates": [[107.8765570148936,-7.198983281192178],[107.8765480886223,-7.199139252866249],[107.8765431083178,-7.199213585667396],[107.8766456469882,-7.199344011078875],[107.8767227115924,-7.199355018044407],[107.8767384454278,-7.199332189323766],[107.8768439921711,-7.199346315884457],[107.8768809335083,-7.199353672238004]] } },
-                        { "type": "Feature", "properties": { "tipe": "jalan_kaki" }, "geometry": { "type": "LineString", "coordinates": [[107.8772386877014,-7.199308516049062],[107.8772805222888,-7.199266930821019],[107.8773032673553,-7.199198047484439],[107.8773175868464,-7.199134761728161],[107.8773228573857,-7.199105870204203],[107.8774248912171,-7.199082899414122],[107.8773344526392,-7.199074765515141],[107.8773406482323,-7.198996450909625],[107.877340001099,-7.198984993201146],[107.877344935943,-7.198904222771866],[107.8773366717294,-7.19884461912235],[107.8773228036119,-7.198768422487944],[107.8772557283549,-7.198679447264881],[107.877185705495,-7.198606390261184],[107.8771224079142,-7.198641821718188],[107.877067361884,-7.198643508120429],[107.8768831695959,-7.198654750407014]] } },
-                        { "type": "Feature", "properties": { "tipe": "jalan_kaki" }, "geometry": { "type": "LineString", "coordinates": [[107.8773183734626,-7.199160866302838],[107.8774072024751,-7.199181048189961],[107.8774790102149,-7.199200449474988],[107.8775296928932,-7.199233295316086]] } },
-                        { "type": "Feature", "properties": { "tipe": "jalan_kaki" }, "geometry": { "type": "LineString", "coordinates": [[107.8768071424699,-7.199760844213078],[107.876845584154,-7.199763896196445],[107.8768481398518,-7.199764022324357],[107.8769077293564,-7.199757857552845]] } },
-                        { "type": "Feature", "properties": { "tipe": "jalan_kaki" }, "geometry": { "type": "LineString", "coordinates": [[107.8776435394043,-7.200198851311058],[107.8775761379091,-7.200134455214448],[107.8775243029649,-7.20005703058338],[107.8775234760786,-7.200044271246204],[107.8775298968942,-7.1999540567891],[107.8775072841912,-7.199921667033207],[107.8774511145907,-7.199911888384424],[107.8773291579045,-7.199904786815782],[107.8772812956143,-7.199888631263038],[107.8772622157688,-7.1998400032407],[107.8772871628539,-7.199764112148721],[107.8773004752845,-7.199679795874997],[107.8772886509838,-7.199612552464097],[107.8772821097175,-7.199610004797634],[107.8772236651279,-7.199568051961804],[107.8772193672433,-7.199563177293068],[107.8771988105158,-7.199508575743802],[107.8771800107586,-7.199459964488343],[107.8771377576128,-7.199420914414978],[107.877108379875,-7.199403048857812]] } }
-                    ]
-                };
-
                 this.state = { 
-                    map: null, 
-                    userMarker: null, 
-                    routeLayers: [], 
-                    currentTarget: null, 
-                    currentRouteSegments: [], 
-                    currentParking: null,
-                    userPos: [...this.PUSAT_KAWASAN], 
-                    isNavigating: false, 
-                    sheetState: 'closed',
-                    currentHeading: 0,
-                    graph: new Map(), 
-                    nodes: [], 
-                    transportMode: 'jalan_kaki',
-                    isManualStart: false,
-                    manualStartTarget: null,
-                    isCameraLocked: true,
-                    lastOffRouteWarn: 0,
-                    
-                    // FITUR BARU: Variabel untuk belokan dan kompas
-                    turnInstructions: [],
-                    compassHeading: 0 
+                    map: null, userMarker: null, routeLayers: [], poiLayer: null,
+                    currentTarget: null, currentRouteSegments: [], currentParking: null,
+                    userPos: [...this.DATA.PUSAT_KAWASAN], isNavigating: false, sheetState: 'closed',
+                    currentHeading: 0, graph: new Map(), nodes: [], transportMode: 'jalan_kaki',
+                    isManualStart: false, manualStartTarget: null, isCameraLocked: true,
+                    lastOffRouteWarn: 0, turnInstructions: [], compassHeading: 0, needsRecalculation: false,
+                    initialRouteDistance: 0, availableRoutes: [], selectedRouteIndex: 0,
+                    // [FITUR BARU] Advanced Features States
+                    favorites: JSON.parse(localStorage.getItem('pupr_favorites') || '[]'),
+                    currentFloor: 'Semua',
+                    isARMode: false
                 };
+
+                this.watchId = null;
+                this.calculateCustomRouteThrottled = debounce(this.calculateCustomRoute.bind(this), 1000);
 
                 this.DOM = {
                     body: document.body,
                     selectAsal: document.getElementById('select-asal'),
-                    selectTujuan: document.getElementById('select-tujuan'),
+                    inputSearchTujuan: document.getElementById('input-search-tujuan'), // Baru
+                    searchResultsContainer: document.getElementById('search-results-container'), // Baru
+                    btnToggleFav: document.getElementById('btn-toggle-fav'), // Baru
+                    btnFloorBtns: document.querySelectorAll('.floor-btn'), // Baru
+                    arContainer: document.getElementById('ar-container'), // Baru
+                    arVideo: document.getElementById('ar-video'), // Baru
+                    arArrow: document.getElementById('ar-arrow'), // Baru
+                    arInstruction: document.getElementById('ar-instruction'), // Baru
+                    arDist: document.getElementById('ar-dist'), // Baru
+                    btnArMode: document.getElementById('btn-ar-mode'), // Baru
+                    btnCloseAr: document.getElementById('btn-close-ar'), // Baru
                     sheet: document.getElementById('info-sheet'),
                     sheetTitle: document.getElementById('sheet-title'),
                     sheetMeta: document.getElementById('sheet-meta'),
+                    routeOptionsContainer: document.getElementById('route-options-container'),
                     instruksiList: document.getElementById('instruksi-list'),
                     topInstruction: document.getElementById('top-instruction'),
                     topDistance: document.getElementById('top-distance'),
+                    navTurnIcon: document.getElementById('nav-turn-icon'),
+                    navProgressBar: document.getElementById('nav-progress-bar'),
                     btnLocation: document.getElementById('btn-location'),
                     btnSearchFocus: document.getElementById('btn-search-focus'),
                     btnStartNav: document.getElementById('btn-start-nav'),
                     btnStopNav: document.getElementById('btn-stop-nav'),
                     btnCloseSheet: document.getElementById('btn-close-sheet'),
-                    sheetHandle: document.getElementById('sheet-handle'),
-                    btnModeJalanKaki: document.getElementById('btn-mode-jalan_kaki'),
-                    btnModeMotor: document.getElementById('btn-mode-motor'),
-                    btnModeMobil: document.getElementById('btn-mode-mobil'),
                     btnRecenter: document.getElementById('btn-recenter'),
                     toast: document.getElementById('toast-msg')
                 };
@@ -386,66 +376,37 @@
             }
 
             init() {
-                // FITUR BARU: Ikon titik biru dengan Sinar Kompas
-                this.icons = {
-                    idle: L.divIcon({ 
-                        className: 'user-dot-container', 
-                        html: `<div class="view-cone" id="user-view-cone"></div><div class="user-dot"></div>`,
-                        iconSize: [80, 80], 
-                        iconAnchor: [40, 40],
-                        zIndexOffset: 1000 
-                    }),
-                    navigating: L.divIcon({
-                        className: 'nav-arrow-container',
-                        html: `<svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" class="nav-arrow-svg">
-                                <path d="M16 2 L30 28 L16 22 L2 28 Z" fill="#1a73e8" stroke="white" stroke-width="2.5" stroke-linejoin="round"/>
-                               </svg>`,
-                        iconSize: [44, 44],
-                        iconAnchor: [22, 22],
-                        zIndexOffset: 1000
-                    }),
-                    parking: L.divIcon({
-                        className: 'parkir-icon',
-                        html: `<div style="background-color:#1a73e8; color:white; width:26px; height:26px; border-radius:50%; text-align:center; line-height:26px; font-weight:900; font-size:14px; border:2px solid white; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">P</div>`,
-                        iconSize: [26, 26],
-                        iconAnchor: [13, 13]
-                    })
-                };
-
+                this.setupIcons();
                 this.checkDarkMode(); 
                 this.setupMap();
                 this.buildRoutingGraph(); 
-                this.populateDropdown();
+                this.populateSearchDropdown(); // [UBAH] Menggunakan fungsi search yang baru
                 this.setupEventListeners();
                 this.unlockAudioEngine(); 
                 this.requestGeolocation();
-                
-                // FITUR BARU: Mengecek Parameter URL
                 this.checkUrlParams();
             }
 
-            // FITUR BARU: Auto-Select Target dari URL Parameter (Misal: ?tujuan=r_kadis)
+            setupIcons() {
+                this.icons = {
+                    idle: L.divIcon({ className: 'user-dot-container', html: `<div class="view-cone" id="user-view-cone"></div><div class="user-dot"></div>`, iconSize: [80, 80], iconAnchor: [40, 40], zIndexOffset: 1000 }),
+                    navigating: L.divIcon({ className: 'nav-arrow-container', html: `<svg viewBox="0 0 32 32" fill="none" class="nav-arrow-svg"><path d="M16 2 L30 28 L16 22 L2 28 Z" fill="#1a73e8" stroke="white" stroke-width="2.5" stroke-linejoin="round"/></svg>`, iconSize: [44, 44], iconAnchor: [22, 22], zIndexOffset: 1000 }),
+                    parking: L.divIcon({ className: 'parkir-icon', html: `<div style="background-color:#1a73e8; color:white; width:26px; height:26px; border-radius:50%; text-align:center; line-height:26px; font-weight:900; font-size:14px; border:2px solid white; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">P</div>`, iconSize: [26, 26], iconAnchor: [13, 13] })
+                };
+            }
+
             checkUrlParams() {
                 const params = new URLSearchParams(window.location.search);
                 const targetId = params.get('tujuan');
-                if (targetId) {
-                    setTimeout(() => {
-                        this.handleLocationSelect(targetId);
-                    }, 800);
-                }
+                if (targetId) setTimeout(() => { this.handleLocationSelect(targetId); }, 800);
             }
 
-            // FITUR BARU: Meminta izin Sensor Kompas (Penting untuk iOS/iPhone)
             requestDeviceOrientation() {
                 if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-                    DeviceOrientationEvent.requestPermission()
-                        .then(permissionState => {
-                            if (permissionState === 'granted') {
-                                window.addEventListener('deviceorientation', this.handleCompass.bind(this), true);
-                            }
-                        }).catch(console.error);
+                    DeviceOrientationEvent.requestPermission().then(state => {
+                        if (state === 'granted') window.addEventListener('deviceorientation', this.handleCompass.bind(this), true);
+                    }).catch(console.error);
                 } else {
-                    // Android & Browser biasa
                     window.addEventListener('deviceorientationabsolute', this.handleCompass.bind(this), true);
                     window.addEventListener('deviceorientation', this.handleCompass.bind(this), true);
                 }
@@ -456,76 +417,226 @@
                 if (compass) {
                     this.state.compassHeading = compass;
                     const cone = document.getElementById('user-view-cone');
-                    if (cone) {
-                        // Putar kerucut berlawanan arah agar sesuai pandangan pengguna
-                        cone.style.transform = `translateY(-40px) rotate(${compass}deg)`;
+                    if (cone) cone.style.transform = `translateY(-40px) rotate(${compass}deg)`;
+
+                    // [FITUR BARU 7] Update rotasi panah AR
+                    if (this.state.isARMode && this.state.isNavigating) {
+                        const targetPt = this.getHeadingTarget(this.state.userPos);
+                        const userPtGeo = turf.point([this.state.userPos[1], this.state.userPos[0]]);
+                        const targetPtGeo = turf.point([targetPt[1], targetPt[0]]);
+                        const bearing = turf.bearing(userPtGeo, targetPtGeo);
+                        
+                        let arrowRot = bearing - this.state.compassHeading;
+                        if (this.DOM.arArrow) this.DOM.arArrow.style.transform = `rotate(${arrowRot}deg) rotateX(45deg)`; // rotasi X agar tampak "tidur" di tanah
                     }
                 }
             }
 
             unlockAudioEngine() {
-                const unlock = () => {
-                    const msg = new SpeechSynthesisUtterance('');
-                    window.speechSynthesis.speak(msg);
-                    document.removeEventListener('touchstart', unlock);
-                    document.removeEventListener('click', unlock);
-                };
-                document.addEventListener('touchstart', unlock, { once: true });
+                const unlock = () => { window.speechSynthesis.speak(new SpeechSynthesisUtterance('')); document.removeEventListener('click', unlock); };
                 document.addEventListener('click', unlock, { once: true });
             }
 
             showToast(message, type = 'error') {
-                this.DOM.toast.textContent = message;
-                if (type === 'error') {
-                    this.DOM.toast.className = "fixed top-20 md:top-24 left-1/2 z-[3000] px-6 py-3 rounded-full text-sm font-bold text-center shadow-lg w-max max-w-[90vw] bg-red-600 text-white transition-all duration-300";
-                } else {
-                    this.DOM.toast.className = "fixed top-20 md:top-24 left-1/2 z-[3000] px-6 py-3 rounded-full text-sm font-bold text-center shadow-lg w-max max-w-[90vw] bg-[#15803d] text-white transition-all duration-300";
-                }
-                
+                this.DOM.toast.textContent = Utils.escapeHTML(message);
+                const baseClass = "fixed top-20 md:top-24 left-1/2 z-[3000] px-6 py-3 rounded-full text-sm font-bold text-center shadow-lg w-max max-w-[90vw] text-white transition-all duration-300";
+                this.DOM.toast.className = `${baseClass} ${type === 'error' ? 'bg-red-600' : 'bg-[#15803d]'}`;
                 this.DOM.toast.classList.add('show');
-                setTimeout(() => {
-                    this.DOM.toast.classList.remove('show');
-                }, 4000);
+                setTimeout(() => this.DOM.toast.classList.remove('show'), 4000);
             }
 
             checkDarkMode() {
-                const hour = new Date().getHours();
-                if (hour >= 18 || hour < 6) {
+                if (new Date().getHours() >= 18 || new Date().getHours() < 6) {
                     document.documentElement.classList.add('dark-theme-active');
-                    setTimeout(() => {
-                        const mapElem = document.getElementById('map');
-                        if(mapElem) mapElem.classList.add('map-dark');
-                    }, 500);
+                    setTimeout(() => { if(document.getElementById('map')) document.getElementById('map').classList.add('map-dark'); }, 500);
                 }
             }
 
             setTransportMode(mode) {
                 this.state.transportMode = mode;
-                
-                const activeClass = ['bg-[#0e3160]', 'text-white', 'shadow-sm'];
                 const inactiveClass = ['text-gray-500', 'hover:bg-gray-200'];
-                
-                [this.DOM.btnModeJalanKaki, this.DOM.btnModeMotor, this.DOM.btnModeMobil].forEach(btn => {
-                    btn.classList.remove(...activeClass);
-                    btn.classList.add(...inactiveClass);
+                ['jalan_kaki', 'motor', 'mobil'].forEach(m => {
+                    const btn = document.getElementById(`btn-mode-${m}`);
+                    btn.className = `flex-1 py-1.5 text-[11px] sm:text-xs font-bold rounded-2xl transition-all truncate ${m === mode ? 'bg-[#0e3160] text-white shadow-sm' : inactiveClass.join(' ')}`;
                 });
-                
-                let activeBtn;
-                if(mode === 'jalan_kaki') activeBtn = this.DOM.btnModeJalanKaki;
-                else if(mode === 'motor') activeBtn = this.DOM.btnModeMotor;
-                else if(mode === 'mobil') activeBtn = this.DOM.btnModeMobil;
-                
-                activeBtn.classList.remove(...inactiveClass);
-                activeBtn.classList.add(...activeClass);
-
                 if (this.state.currentTarget) this.calculateCustomRoute();
             }
 
+            // ==========================================
+            // [FITUR BARU 8] FLOOR MANAGEMENT
+            // ==========================================
+            setFloor(floorName) {
+                this.state.currentFloor = floorName;
+                
+                this.DOM.btnFloorBtns.forEach(btn => {
+                    btn.classList.remove('active');
+                    if (btn.textContent.trim().toUpperCase() === (floorName === 'Semua' ? 'ALL' : (floorName === 'Lantai 1' ? 'L1' : (floorName === 'Lantai 2' ? 'L2' : 'OD')))) {
+                        btn.classList.add('active');
+                    }
+                });
+                this.renderPOIs();
+            }
+
+            setupMap() {
+                const openStreetMap = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 22, maxNativeZoom: 19, attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>', keepBuffer: 8, updateWhenIdle: false });
+                this.state.map = L.map('map', { zoomControl: false, attributionControl: false, zoomSnap: 0.5, layers: [openStreetMap] }).setView(this.state.userPos, 20);
+                L.control.attribution({position: 'bottomleft', prefix: false}).addTo(this.state.map);
+                this.state.userMarker = L.marker(this.state.userPos, { icon: this.icons.idle }).addTo(this.state.map);
+                
+                // [FITUR BARU 8] LayerGroup khusus POI agar mudah dihapus/digambar sesuai lantai
+                this.state.poiLayer = L.layerGroup().addTo(this.state.map);
+                this.renderPOIs();
+            }
+
+            renderPOIs() {
+                this.state.poiLayer.clearLayers();
+
+                const drawPOI = (loc) => {
+                    // Filter lantai
+                    if (this.state.currentFloor !== 'Semua' && loc.floor !== this.state.currentFloor) return;
+
+                    let iconType = loc.cat;
+                    if (loc.name.includes('Kantin')) iconType = 'Kantin';
+                    else if (loc.name.includes('Mushala')) iconType = 'Mushala';
+                    else if (loc.name.includes('Toilet')) iconType = 'Toilet';
+                    else if (loc.name.includes('Perpus')) iconType = 'Perpus';
+                    else if (loc.type === 'mobil') iconType = 'ParkirMobil';
+                    else if (loc.type === 'motor') iconType = 'ParkirMotor';
+
+                    L.marker([loc.lat, loc.lng], { icon: this.createCustomMarker(iconType) })
+                      .addTo(this.state.poiLayer)
+                      .bindPopup(this.generatePopupElement(loc), { closeButton: true, autoClose: false });
+                };
+
+                this.DATA.LOCATIONS.forEach(drawPOI);
+                this.DATA.PARKIRAN.forEach(park => {
+                    park.cat = 'Parkiran'; park.img = 'https://images.unsplash.com/photo-1506521781263-d8422e82f27a?w=300&q=80';
+                    drawPOI(park);
+                });
+            }
+
+            // ==========================================
+            // [FITUR BARU 9] SEARCH ENGINE LOKASI
+            // ==========================================
+            populateSearchDropdown(query = '') {
+                const container = this.DOM.searchResultsContainer;
+                container.innerHTML = '';
+                const q = query.toLowerCase().trim();
+                
+                // Menggabungkan dan mencari lokasi
+                const allPlaces = [...this.DATA.LOCATIONS, ...this.DATA.PARKIRAN];
+                let results = [];
+
+                if (q === '') {
+                    // Jika kosong, tampilkan favorit
+                    results = allPlaces.filter(p => this.state.favorites.includes(p.id));
+                    if (results.length > 0) {
+                        const header = document.createElement('div');
+                        header.className = 'px-4 py-2 bg-gray-50 text-xs font-bold text-gray-500 uppercase tracking-wider';
+                        header.textContent = '⭐ Lokasi Favorit';
+                        container.appendChild(header);
+                    }
+                } else {
+                    results = allPlaces.filter(p => 
+                        p.name.toLowerCase().includes(q) || 
+                        p.cat.toLowerCase().includes(q) || 
+                        (p.floor && p.floor.toLowerCase().includes(q))
+                    );
+                }
+
+                if (results.length === 0 && q !== '') {
+                    const div = document.createElement('div');
+                    div.className = 'p-4 text-sm text-gray-500 text-center';
+                    div.textContent = 'Tidak ditemukan.';
+                    container.appendChild(div);
+                } else {
+                    results.forEach(loc => {
+                        const item = document.createElement('div');
+                        item.className = 'search-item';
+                        item.innerHTML = `
+                            <div class="text-xl shrink-0">${loc.cat === 'Parkiran' ? '🅿️' : (loc.cat === 'Fasilitas' ? '📍' : '🏢')}</div>
+                            <div class="flex-1 min-w-0">
+                                <div class="text-sm font-bold text-[#0e3160] truncate">${Utils.escapeHTML(loc.name)}</div>
+                                <div class="text-xs text-gray-500 truncate">${Utils.escapeHTML(loc.cat)} • ${Utils.escapeHTML(loc.floor)}</div>
+                            </div>
+                        `;
+                        item.addEventListener('click', () => {
+                            this.DOM.inputSearchTujuan.value = loc.name;
+                            this.handleLocationSelect(loc.id);
+                            container.classList.remove('active');
+                        });
+                        container.appendChild(item);
+                    });
+                }
+            }
+
+            searchCategory(catName) {
+                this.DOM.inputSearchTujuan.value = catName;
+                this.populateSearchDropdown(catName);
+                this.DOM.searchResultsContainer.classList.add('active');
+            }
+
+            showFavorites() {
+                this.DOM.inputSearchTujuan.value = '';
+                this.populateSearchDropdown('');
+                this.DOM.searchResultsContainer.classList.add('active');
+            }
+
+            // ==========================================
+            // [FITUR BARU 10] BOOKMARK / FAVORIT
+            // ==========================================
+            toggleFavorite(id) {
+                const idx = this.state.favorites.indexOf(id);
+                if (idx > -1) {
+                    this.state.favorites.splice(idx, 1);
+                    this.showToast("Dihapus dari Favorit", "success");
+                } else {
+                    this.state.favorites.push(id);
+                    this.showToast("Ditambahkan ke Favorit", "success");
+                }
+                localStorage.setItem('pupr_favorites', JSON.stringify(this.state.favorites));
+                
+                // Update UI icon on sheet
+                if (this.state.currentTarget && this.state.currentTarget.id === id) {
+                    this.DOM.btnToggleFav.classList.toggle('is-fav', idx === -1);
+                }
+            }
+
+            // ==========================================
+            // [FITUR BARU 7] AR NAVIGATION
+            // ==========================================
+            toggleARMode() {
+                if(this.state.isARMode) this.stopAR();
+                else this.startAR();
+            }
+
+            async startAR() {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+                    this.DOM.arVideo.srcObject = stream;
+                    this.DOM.arContainer.classList.add('active');
+                    this.state.isARMode = true;
+                    // Trigger kompas aktif (penting untuk iOS)
+                    this.requestDeviceOrientation();
+                } catch(e) {
+                    this.showToast("Kamera tidak diizinkan atau tidak didukung perangkat.", "error");
+                }
+            }
+
+            stopAR() {
+                const stream = this.DOM.arVideo.srcObject;
+                if(stream) stream.getTracks().forEach(t => t.stop());
+                this.DOM.arVideo.srcObject = null;
+                this.DOM.arContainer.classList.remove('active');
+                this.state.isARMode = false;
+            }
+
+
+            // ... Sisa fungsi algoritma Dijkstra & Peta ...
             buildRoutingGraph() {
                 const points = [];
-                
-                this.JALUR_KML_GEOJSON.features.forEach((feature) => {
-                    const coords = feature.geometry.coordinates;
+                this.DATA.ROUTES_GEOJSON.features.forEach((feature) => {
+                    const coords = feature.geometry.coordinates; // [Lng, Lat]
                     const tipeJalan = feature.properties.tipe;
 
                     for (let i = 0; i < coords.length; i++) {
@@ -564,18 +675,14 @@
                 let minDist = Infinity;
                 this.state.nodes.forEach(pt => {
                     const dist = turf.distance(coordLngLat, pt.coord, {units: 'meters'});
-                    if (dist < minDist) {
-                        minDist = dist;
-                        nearest = pt.id;
-                    }
+                    if (dist < minDist) { minDist = dist; nearest = pt.id; }
                 });
                 return nearest;
             }
 
-            findShortestPath(startLngLat, endLngLat, mode) {
+            findShortestPath(startLngLat, endLngLat, mode, weightType = 'time', avoidNodeId = null) {
                 const startId = this.getNearestNodeId(startLngLat);
                 const endId = this.getNearestNodeId(endLngLat);
-
                 if (!startId || !endId || startId === endId) return [];
 
                 const distances = new Map();
@@ -593,21 +700,20 @@
                 while (queue.length > 0) {
                     queue.sort((a, b) => a.dist - b.dist);
                     const current = queue.shift().node;
-
                     if (current === endId) break;
 
                     const neighbors = this.state.graph.get(current);
                     for (let neighbor of neighbors) {
-                        let speed = 1.4; 
-                        
+                        if (neighbor.node === avoidNodeId) continue;
+                        let speed = 1.4;
                         if (mode === 'mobil') {
                             if (neighbor.type === 'mobil') speed = 5.5; 
-                            else if (neighbor.type === 'motor') speed = 0.001; 
+                            else if (neighbor.type === 'motor') speed = 0.001;
                         } else if (mode === 'motor') {
                             if (neighbor.type === 'mobil' || neighbor.type === 'motor') speed = 5.5;
                         }
 
-                        const timeCost = neighbor.weight / speed; 
+                        let timeCost = weightType === 'distance' ? neighbor.weight : (neighbor.weight / speed); 
                         const alt = distances.get(current) + timeCost;
                         
                         if (alt < distances.get(neighbor.node)) {
@@ -619,32 +725,21 @@
                 }
 
                 if (distances.get(endId) === Infinity) return [];
-
                 const pathSegments = [];
                 let curr = endId;
                 while (curr !== startId) {
                     const prevObj = previous.get(curr);
                     if(!prevObj) break;
-                    
                     const p1 = prevObj.node.split(',').map(Number);
                     const p2 = curr.split(',').map(Number);
-                    
-                    pathSegments.unshift({
-                        start: [p1[1], p1[0]], 
-                        end: [p2[1], p2[0]],
-                        type: prevObj.type
-                    });
+                    pathSegments.unshift({ start: [p1[1], p1[0]], end: [p2[1], p2[0]], type: prevObj.type });
                     curr = prevObj.node;
                 }
                 return pathSegments;
             }
 
-            // FITUR BARU: Fungsi pembuat marker custom berdasarkan kategori
             createCustomMarker(type) {
-                let iconStr = '📍';
-                let colorClass = 'bg-[#0e3160]';
-                let tailColor = 'border-t-[#0e3160]';
-
+                let iconStr = '📍', colorClass = 'bg-[#0e3160]', tailColor = 'border-t-[#0e3160]';
                 if (type === 'Kantin') { iconStr = '☕'; colorClass = 'bg-[#d97706]'; tailColor = 'border-t-[#d97706]'; }
                 else if (type === 'Mushala') { iconStr = '🕌'; colorClass = 'bg-[#10b981]'; tailColor = 'border-t-[#10b981]'; }
                 else if (type === 'Toilet') { iconStr = '🚻'; colorClass = 'bg-[#0ea5e9]'; tailColor = 'border-t-[#0ea5e9]'; }
@@ -652,139 +747,72 @@
                 else if (type === 'Gerbang') { iconStr = '🚪'; colorClass = 'bg-[#ef4444]'; tailColor = 'border-t-[#ef4444]'; }
                 else if (type === 'ParkirMobil') { iconStr = '🚗'; colorClass = 'bg-[#3b82f6]'; tailColor = 'border-t-[#3b82f6]'; }
                 else if (type === 'ParkirMotor') { iconStr = '🏍️'; colorClass = 'bg-[#8b5cf6]'; tailColor = 'border-t-[#8b5cf6]'; }
-                else if (type === 'Gedung' || type === 'Ruangan' || type === 'Bidang' || type === 'UPT') { iconStr = '🏢'; colorClass = 'bg-[#0e3160]'; tailColor = 'border-t-[#0e3160]'; }
-                else { iconStr = '📍'; colorClass = 'bg-gray-600'; tailColor = 'border-t-gray-600'; }
+                else if (['Gedung', 'Ruangan', 'Bidang', 'UPT'].includes(type)) { iconStr = '🏢'; colorClass = 'bg-[#0e3160]'; tailColor = 'border-t-[#0e3160]'; }
 
-                const html = `
-                    <div class="relative flex items-center justify-center w-8 h-8 rounded-full border-[2.5px] border-white shadow-md ${colorClass} hover:scale-110 transition-transform z-10">
-                        <span class="text-sm leading-none drop-shadow-sm">${iconStr}</span>
-                        <!-- Segitiga lancip di bawah lingkaran -->
-                        <div class="absolute -bottom-2 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-r-[6px] border-t-[8px] border-l-transparent border-r-transparent ${tailColor}"></div>
-                    </div>
-                `;
-
-                return L.divIcon({
-                    className: 'custom-pin-marker',
-                    html: html,
-                    iconSize: [32, 40],
-                    iconAnchor: [16, 40],
-                    popupAnchor: [0, -40] // Menyesuaikan agar pop-up muncul pas di atas marker
-                });
+                const html = `<div class="relative flex items-center justify-center w-8 h-8 rounded-full border-[2.5px] border-white shadow-md ${colorClass} hover:scale-110 transition-transform z-10"><span class="text-sm leading-none drop-shadow-sm">${iconStr}</span><div class="absolute -bottom-2 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-r-[6px] border-t-[8px] border-l-transparent border-r-transparent ${tailColor}"></div></div>`;
+                return L.divIcon({ className: 'custom-pin-marker', html: html, iconSize: [32, 40], iconAnchor: [16, 40], popupAnchor: [0, -40] });
             }
 
-            // FITUR BARU: Pembuat HTML Pop-Up Leaflet
-            generatePopupHTML(loc) {
-                return `
-                    <div class="w-[220px] pb-1">
-                        <img src="${loc.img}" alt="${loc.name}" class="w-full h-[100px] object-cover rounded-t-[12px] m-0" onerror="this.src='https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=300&q=80'">
-                        <div class="p-3 bg-white rounded-b-[12px]">
-                            <h3 class="font-bold text-[#0e3160] text-[15px] leading-tight mb-1">${loc.name}</h3>
-                            <div class="flex items-center gap-1 text-gray-500 text-[11px] mb-1">
-                                <span>📍</span> ${loc.floor}
-                            </div>
-                            <div class="flex items-center gap-1 text-gray-500 text-[11px] mb-3">
-                                <span>🕒</span> ${loc.hours}
-                            </div>
-                            <button onclick="window.puprApp.handleLocationSelect('${loc.id}')" class="w-full bg-[#15803d] hover:bg-green-700 text-white font-bold py-1.5 rounded-lg text-xs shadow-sm transition-colors cursor-pointer">
-                                Arahkan ke Sini
-                            </button>
-                        </div>
-                    </div>
-                `;
-            }
-
-            setupMap() {
-                const googleStreets = L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', { 
-                    maxZoom: 22, subdomains: ['mt0', 'mt1', 'mt2', 'mt3'], keepBuffer: 8, updateWhenIdle: false 
-                });
-
-                const googleSatellite = L.tileLayer('https://{s}.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}', { 
-                    maxZoom: 22, subdomains: ['mt0', 'mt1', 'mt2', 'mt3'], keepBuffer: 8, updateWhenIdle: false 
-                });
-
-                const openStreetMap = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { 
-                    maxZoom: 22, 
-                    maxNativeZoom: 19, 
-                    attribution: '© OpenStreetMap contributors', 
-                    keepBuffer: 8, 
-                    updateWhenIdle: false 
-                });
-
-                this.state.map = L.map('map', { 
-                    zoomControl: false, 
-                    attributionControl: false,
-                    zoomSnap: 0.5,
-                    layers: [openStreetMap] 
-                }).setView(this.state.userPos, 20);
+            generatePopupElement(loc) {
+                const container = document.createElement('div');
+                container.className = 'w-[220px] pb-1';
                 
-                const baseMaps = {
-                    "OpenStreetMap": openStreetMap,
-                    "Google Maps": googleStreets,
-                    "Satelit Google": googleSatellite
-                };
-                L.control.layers(baseMaps, null, { position: 'bottomleft' }).addTo(this.state.map);
+                const img = document.createElement('img');
+                img.src = loc.img || ''; img.alt = loc.name || '';
+                img.className = 'w-full h-[100px] object-cover rounded-t-[12px] m-0';
+                img.onerror = () => { img.src = 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=300&q=80'; };
 
-                this.state.userMarker = L.marker(this.state.userPos, { icon: this.icons.idle }).addTo(this.state.map);
-
-                // PERBAIKAN: Mengganti marker pink default dengan marker custom kategori
-                this.LOCATIONS.forEach(loc => {
-                    let iconType = loc.cat;
-                    if (loc.name.includes('Kantin')) iconType = 'Kantin';
-                    else if (loc.name.includes('Mushala')) iconType = 'Mushala';
-                    else if (loc.name.includes('Toilet')) iconType = 'Toilet';
-                    else if (loc.name.includes('Perpus')) iconType = 'Perpus';
-
-                    L.marker([loc.lat, loc.lng], { icon: this.createCustomMarker(iconType) }).addTo(this.state.map)
-                      .bindPopup(this.generatePopupHTML(loc), { closeButton: true, autoClose: false });
-                });
-
-                // FITUR BARU: Menampilkan semua titik Parkiran di Peta secara permanen
-                this.PARKIRAN.forEach(park => {
-                    let iconType = park.type === 'mobil' ? 'ParkirMobil' : 'ParkirMotor';
-                    
-                    const parkLoc = {
-                        id: park.id, 
-                        name: park.name, 
-                        lat: park.lat, 
-                        lng: park.lng,
-                        cat: 'Parkiran', 
-                        floor: 'Outdoor', 
-                        hours: 'Jam Kerja', 
-                        img: 'https://images.unsplash.com/photo-1506521781263-d8422e82f27a?w=300&q=80' // Gambar ilustrasi parkir
-                    };
-
-                    L.marker([park.lat, park.lng], { icon: this.createCustomMarker(iconType) }).addTo(this.state.map)
-                      .bindPopup(this.generatePopupHTML(parkLoc), { closeButton: true, autoClose: false });
-                });
-            }
-
-            populateDropdown() {
-                const categories = [...new Set(this.LOCATIONS.map(loc => loc.cat))].sort();
+                const info = document.createElement('div');
+                info.className = 'p-3 bg-white rounded-b-[12px]';
                 
-                const createOptions = () => {
-                    const fragment = document.createDocumentFragment();
-                    categories.forEach(cat => {
-                        const optgroup = document.createElement('optgroup');
-                        optgroup.label = `--- ${cat.toUpperCase()} ---`;
-                        const locsInCat = this.LOCATIONS.filter(l => l.cat === cat).sort((a,b) => a.name.localeCompare(b.name));
-                        locsInCat.forEach(loc => {
-                            const option = document.createElement('option');
-                            option.value = loc.id; option.textContent = loc.name; optgroup.appendChild(option);
-                        });
-                        fragment.appendChild(optgroup);
-                    });
-                    return fragment;
-                };
+                const h3 = document.createElement('h3');
+                h3.className = 'font-bold text-[#0e3160] text-[15px] leading-tight mb-1';
+                h3.textContent = loc.name || '';
 
-                this.DOM.selectTujuan.appendChild(createOptions());
-                this.DOM.selectAsal.appendChild(createOptions());
+                const floor = document.createElement('div');
+                floor.className = 'flex items-center gap-1 text-gray-500 text-[11px] mb-1';
+                floor.textContent = `📍 ${loc.floor || ''}`;
+
+                const hours = document.createElement('div');
+                hours.className = 'flex items-center gap-1 text-gray-500 text-[11px] mb-3';
+                hours.textContent = `🕒 ${loc.hours || ''}`;
+
+                const btn = document.createElement('button');
+                btn.className = 'w-full bg-[#15803d] hover:bg-green-700 text-white font-bold py-1.5 rounded-lg text-xs shadow-sm transition-colors cursor-pointer';
+                btn.setAttribute('aria-label', `Arahkan ke ${loc.name || ''}`);
+                btn.textContent = 'Arahkan ke Sini';
+                btn.addEventListener('click', (e) => { e.preventDefault(); this.handleLocationSelect(loc.id); });
+
+                info.append(h3, floor, hours, btn);
+                container.append(img, info);
+                return container;
             }
 
             setupEventListeners() {
+                // [FITUR BARU 9] Event Listener Search Engine Dinamis
+                this.DOM.inputSearchTujuan.addEventListener('focus', () => { this.DOM.searchResultsContainer.classList.add('active'); this.populateSearchDropdown(this.DOM.inputSearchTujuan.value); });
+                this.DOM.inputSearchTujuan.addEventListener('input', (e) => { this.populateSearchDropdown(e.target.value); });
+                
+                // Menutup search jika klik di luar
+                document.addEventListener('click', (e) => {
+                    if (!this.DOM.inputSearchTujuan.contains(e.target) && !this.DOM.searchResultsContainer.contains(e.target)) {
+                        this.DOM.searchResultsContainer.classList.remove('active');
+                    }
+                });
+
+                // Event Button Bookmark
+                this.DOM.btnToggleFav.addEventListener('click', () => {
+                    if(this.state.currentTarget) this.toggleFavorite(this.state.currentTarget.id);
+                });
+
+                // AR Buttons
+                this.DOM.btnArMode.addEventListener('click', () => this.toggleARMode());
+                this.DOM.btnCloseAr.addEventListener('click', () => this.stopAR());
+
+                // Existing events
                 this.DOM.selectAsal.addEventListener('change', (e) => this.handleStartSelect(e.target.value));
-                this.DOM.selectTujuan.addEventListener('change', (e) => this.handleLocationSelect(e.target.value));
                 this.DOM.btnLocation.addEventListener('click', () => this.focusUserLocation());
-                this.DOM.btnSearchFocus.addEventListener('click', () => this.DOM.selectTujuan.focus());
+                this.DOM.btnSearchFocus.addEventListener('click', () => { this.DOM.inputSearchTujuan.focus(); });
                 this.DOM.btnStartNav.addEventListener('click', () => this.startNavigation());
                 this.DOM.btnStopNav.addEventListener('click', () => this.stopNavigation());
                 this.DOM.btnCloseSheet.addEventListener('click', () => this.updateSheetState('closed'));
@@ -801,66 +829,61 @@
                     this.state.isCameraLocked = true;
                     this.DOM.btnRecenter.classList.add('hidden');
                     this.DOM.btnRecenter.classList.remove('flex');
-                    
                     const actualStartPos = this.state.isManualStart ? [this.state.manualStartTarget.lat, this.state.manualStartTarget.lng] : this.state.userPos;
                     this.state.map.flyTo(actualStartPos, 21, { animate: true, duration: 1 });
                 });
+
+                window.addEventListener('beforeunload', () => { if (this.watchId) navigator.geolocation.clearWatch(this.watchId); });
             }
 
             toggleSheet() {
-                if(this.state.sheetState === 'active') {
-                    this.updateSheetState('minimized');
-                } else if(this.state.sheetState === 'minimized') {
-                    this.updateSheetState('active');
-                }
+                if(this.state.sheetState === 'active') this.updateSheetState('minimized');
+                else if(this.state.sheetState === 'minimized') this.updateSheetState('active');
             }
 
             handleLocationSelect(id) {
                 if (!id) return;
-                const target = this.LOCATIONS.find(p => p.id === id);
+                const target = [...this.DATA.LOCATIONS, ...this.DATA.PARKIRAN].find(p => p.id === id);
                 if (!target || (this.state.currentTarget && this.state.currentTarget.id === target.id)) return;
 
-                this.state.map.closePopup(); // Tutup popup jika ada yang terbuka
-
+                this.state.map.closePopup();
                 this.state.currentTarget = target;
-                this.DOM.selectTujuan.value = id; 
-                this.DOM.selectTujuan.blur();
+                
+                // Update text di search bar
+                this.DOM.inputSearchTujuan.value = target.name;
+                this.DOM.inputSearchTujuan.blur();
+
+                // Cek status favorit
+                const isFav = this.state.favorites.includes(target.id);
+                this.DOM.btnToggleFav.classList.toggle('is-fav', isFav);
+
                 this.calculateCustomRoute();
             }
 
             handleStartSelect(id) {
                 if (id === 'gps') {
-                    this.state.isManualStart = false;
-                    this.state.manualStartTarget = null;
-                    this.state.userMarker.setLatLng(this.state.userPos); 
-                    this.state.map.flyTo(this.state.userPos, 20, { animate: true }); 
+                    this.state.isManualStart = false; this.state.manualStartTarget = null;
+                    this.state.userMarker.setLatLng(this.state.userPos); this.state.map.flyTo(this.state.userPos, 20, { animate: true }); 
                 } else {
-                    this.state.isManualStart = true;
-                    this.state.manualStartTarget = this.LOCATIONS.find(p => p.id === id);
+                    this.state.isManualStart = true; this.state.manualStartTarget = this.DATA.LOCATIONS.find(p => p.id === id);
                     if (this.state.manualStartTarget) {
                         const manualPos = [this.state.manualStartTarget.lat, this.state.manualStartTarget.lng];
-                        this.state.userMarker.setLatLng(manualPos); 
-                        this.state.map.flyTo(manualPos, 20, { animate: true }); 
+                        this.state.userMarker.setLatLng(manualPos); this.state.map.flyTo(manualPos, 20, { animate: true }); 
                     }
                 }
-                
                 this.DOM.selectAsal.blur();
                 if (this.state.currentTarget) this.calculateCustomRoute(); 
             }
 
-            // FITUR BARU: Menganalisis Titik Belokan
             analyzeTurns(pathSegments, targetLngLat) {
                 this.state.turnInstructions = [];
                 for (let i = 0; i < pathSegments.length - 1; i++) {
-                    const seg1 = pathSegments[i];
-                    const seg2 = pathSegments[i+1];
-                    
+                    const seg1 = pathSegments[i]; const seg2 = pathSegments[i+1];
                     const pt1 = turf.point([seg1.start[1], seg1.start[0]]);
                     const pt2 = turf.point([seg1.end[1], seg1.end[0]]);
                     const pt3 = turf.point([seg2.end[1], seg2.end[0]]);
 
-                    const b1 = turf.bearing(pt1, pt2);
-                    const b2 = turf.bearing(pt2, pt3);
+                    const b1 = turf.bearing(pt1, pt2); const b2 = turf.bearing(pt2, pt3);
                     let diff = (b2 - b1 + 360) % 360;
                     
                     let turnType = null;
@@ -868,11 +891,8 @@
                     else if (diff > 205 && diff < 335) turnType = 'kiri';
 
                     if (turnType) {
-                        // Hanya masukkan jika jarak belokan dari tujuan masih cukup jauh
                         const distToTarget = turf.distance(pt2, turf.point([targetLngLat[0], targetLngLat[1]]), {units: 'meters'});
-                        if(distToTarget > 15) {
-                            this.state.turnInstructions.push({ coord: seg1.end, type: turnType, announced: false });
-                        }
+                        if(distToTarget > 15) this.state.turnInstructions.push({ coord: seg1.end, type: turnType, announced: false, passed: false });
                     }
                 }
             }
@@ -882,12 +902,14 @@
                     this.clearRouteLayers();
                     this.updateSheetState('active');
                     this.DOM.sheetTitle.textContent = "Mencari Rute Terbaik...";
-                    this.DOM.sheetMeta.textContent = "Menghubungkan ke area parkir...";
+                    this.DOM.sheetMeta.textContent = "Menghitung...";
+                    this.DOM.routeOptionsContainer.innerHTML = '';
                     
-                    this.DOM.instruksiList.innerHTML = `
-                        <div class="space-y-4 py-2">
-                            <div class="flex gap-4"><div class="skeleton h-8 w-8 rounded-full shrink-0"></div><div class="space-y-2 w-full"><div class="skeleton h-4 w-3/4"></div><div class="skeleton h-3 w-1/4"></div></div></div>
-                        </div>`;
+                    this.DOM.instruksiList.innerHTML = '';
+                    const skeletonContainer = document.createElement('div');
+                    skeletonContainer.className = 'space-y-4 py-2';
+                    skeletonContainer.innerHTML = `<div class="flex gap-4"><div class="skeleton h-8 w-8 rounded-full shrink-0"></div><div class="space-y-2 w-full"><div class="skeleton h-4 w-3/4"></div><div class="skeleton h-3 w-1/4"></div></div></div>`;
+                    this.DOM.instruksiList.appendChild(skeletonContainer);
                 }
 
                 setTimeout(() => {
@@ -895,96 +917,110 @@
                     const startLngLat = [actualStartPos[1], actualStartPos[0]];
                     const targetLngLat = [this.state.currentTarget.lng, this.state.currentTarget.lat];
                     
-                    let shortestPath = [];
+                    const computeFullRoute = (weightType, avoidNode = null) => {
+                        let pathSegments = []; let parkingData = null;
 
-                    if (this.state.transportMode !== 'jalan_kaki') {
-                        const targetPoint = turf.point(targetLngLat);
-                        
-                        const allowedParkings = this.PARKIRAN.filter(p => {
-                            if (this.state.transportMode === 'mobil') return p.type === 'mobil';
-                            if (this.state.transportMode === 'motor') return p.type === 'motor' || p.type === 'mobil';
-                            return false;
-                        });
-                        
-                        let nearestParking = null;
-                        let minDistToTarget = Infinity;
+                        if (this.state.transportMode !== 'jalan_kaki') {
+                            const targetPoint = turf.point(targetLngLat);
+                            const allowedParkings = this.DATA.PARKIRAN.filter(p => {
+                                if (this.state.transportMode === 'mobil') return p.type === 'mobil';
+                                if (this.state.transportMode === 'motor') return p.type === 'motor' || p.type === 'mobil';
+                                return false;
+                            });
+                            
+                            let nearestParking = null, minDistToTarget = Infinity;
+                            allowedParkings.forEach(p => {
+                                const d = turf.distance(targetPoint, turf.point([p.lng, p.lat]), {units: 'meters'});
+                                if (d < minDistToTarget) { minDistToTarget = d; nearestParking = p; }
+                            });
 
-                        allowedParkings.forEach(p => {
-                            const d = turf.distance(targetPoint, turf.point([p.lng, p.lat]), {units: 'meters'});
-                            if (d < minDistToTarget) {
-                                minDistToTarget = d;
-                                nearestParking = p;
+                            if (nearestParking) {
+                                parkingData = nearestParking; const parkLngLat = [nearestParking.lng, nearestParking.lat];
+                                const path1 = this.findShortestPath(startLngLat, parkLngLat, this.state.transportMode, weightType, avoidNode);
+                                const path2 = this.findShortestPath(parkLngLat, targetLngLat, 'jalan_kaki', 'distance');
+
+                                if (path1.length > 0) {
+                                    pathSegments.push({ start: actualStartPos, end: path1[0].start, type: this.state.transportMode });
+                                    pathSegments.push(...path1);
+                                    pathSegments.push({ start: path1[path1.length-1].end, end: [nearestParking.lat, nearestParking.lng], type: this.state.transportMode });
+                                } else pathSegments.push({ start: actualStartPos, end: [nearestParking.lat, nearestParking.lng], type: this.state.transportMode });
+
+                                if (path2.length > 0) {
+                                    pathSegments.push({ start: [nearestParking.lat, nearestParking.lng], end: path2[0].start, type: 'jalan_kaki' });
+                                    pathSegments.push(...path2);
+                                    pathSegments.push({ start: path2[path2.length-1].end, end: [this.state.currentTarget.lat, this.state.currentTarget.lng], type: 'jalan_kaki' });
+                                } else pathSegments.push({ start: [nearestParking.lat, nearestParking.lng], end: [this.state.currentTarget.lat, this.state.currentTarget.lng], type: 'jalan_kaki' });
                             }
-                        });
-
-                        if (nearestParking) {
-                            this.state.currentParking = nearestParking;
-                            const parkLngLat = [nearestParking.lng, nearestParking.lat];
-
-                            const path1 = this.findShortestPath(startLngLat, parkLngLat, this.state.transportMode);
-                            const path2 = this.findShortestPath(parkLngLat, targetLngLat, 'jalan_kaki');
-
-                            if (path1.length > 0) {
-                                shortestPath.push({ start: actualStartPos, end: path1[0].start, type: this.state.transportMode });
-                                shortestPath.push(...path1);
-                                shortestPath.push({ start: path1[path1.length-1].end, end: [nearestParking.lat, nearestParking.lng], type: this.state.transportMode });
-                            } else {
-                                shortestPath.push({ start: actualStartPos, end: [nearestParking.lat, nearestParking.lng], type: this.state.transportMode });
-                            }
-
-                            if (path2.length > 0) {
-                                shortestPath.push({ start: [nearestParking.lat, nearestParking.lng], end: path2[0].start, type: 'jalan_kaki' });
-                                shortestPath.push(...path2);
-                                shortestPath.push({ start: path2[path2.length-1].end, end: [this.state.currentTarget.lat, this.state.currentTarget.lng], type: 'jalan_kaki' });
-                            } else {
-                                shortestPath.push({ start: [nearestParking.lat, nearestParking.lng], end: [this.state.currentTarget.lat, this.state.currentTarget.lng], type: 'jalan_kaki' });
-                            }
-                        }
-                    } else {
-                        this.state.currentParking = null;
-                        const pathWalk = this.findShortestPath(startLngLat, targetLngLat, 'jalan_kaki');
-                        
-                        if (pathWalk.length > 0) {
-                            shortestPath.push({ start: actualStartPos, end: pathWalk[0].start, type: 'jalan_kaki' });
-                            shortestPath.push(...pathWalk);
-                            shortestPath.push({ start: pathWalk[pathWalk.length-1].end, end: [this.state.currentTarget.lat, this.state.currentTarget.lng], type: 'jalan_kaki' });
                         } else {
-                            shortestPath.push({ start: actualStartPos, end: [this.state.currentTarget.lat, this.state.currentTarget.lng], type: 'jalan_kaki' });
+                            const pathWalk = this.findShortestPath(startLngLat, targetLngLat, 'jalan_kaki', weightType, avoidNode);
+                            if (pathWalk.length > 0) {
+                                pathSegments.push({ start: actualStartPos, end: pathWalk[0].start, type: 'jalan_kaki' });
+                                pathSegments.push(...pathWalk);
+                                pathSegments.push({ start: pathWalk[pathWalk.length-1].end, end: [this.state.currentTarget.lat, this.state.currentTarget.lng], type: 'jalan_kaki' });
+                            } else pathSegments.push({ start: actualStartPos, end: [this.state.currentTarget.lat, this.state.currentTarget.lng], type: 'jalan_kaki' });
                         }
+
+                        let distK = 0, distJ = 0;
+                        pathSegments.forEach(seg => {
+                            const p1 = turf.point([seg.start[1], seg.start[0]]); const p2 = turf.point([seg.end[1], seg.end[0]]);
+                            const d = turf.distance(p1, p2, {units: 'meters'});
+                            if ((seg.type === 'mobil' || seg.type === 'motor') && this.state.transportMode !== 'jalan_kaki') distK += d; else distJ += d;
+                        });
+
+                        const totalDistMeters = Math.round(distK + distJ);
+                        const timeSecs = (distK / 5.5) + (distJ / 1.4);
+                        return { segments: pathSegments, parking: parkingData, distK, distJ, totalDist: totalDistMeters, timeMinutes: Math.ceil(timeSecs / 60) || 1 };
+                    };
+
+                    this.state.availableRoutes = [];
+                    const fastestRoute = computeFullRoute('time');
+                    fastestRoute.name = 'Tercepat'; this.state.availableRoutes.push(fastestRoute);
+
+                    const shortestRoute = computeFullRoute('distance');
+                    if (Math.abs(fastestRoute.totalDist - shortestRoute.totalDist) > 10) {
+                        shortestRoute.name = 'Terpendek'; this.state.availableRoutes.push(shortestRoute);
                     }
 
-                    this.state.currentRouteSegments = shortestPath;
-                    this.analyzeTurns(shortestPath, targetLngLat); // Kalkulasi Titik Belokan Suara
-                    
-                    this.drawCustomRoute(shortestPath, isSilent);
-                    this.renderCustomRouteInfo(shortestPath, isSilent);
+                    this.selectRoute(0, isSilent);
+
                 }, isSilent ? 0 : 100); 
             }
 
-            drawCustomRoute(pathSegments, isSilent = false) {
-                if (isSilent) {
-                    this.clearRouteLayers(); 
-                }
+            selectRoute(index, isSilent = false) {
+                if (!this.state.availableRoutes[index]) return;
+                this.state.selectedRouteIndex = index;
+                const route = this.state.availableRoutes[index];
+                this.state.currentRouteSegments = route.segments;
+                this.state.currentParking = route.parking;
+                this.analyzeTurns(route.segments, [this.state.currentTarget.lng, this.state.currentTarget.lat]);
+                this.drawMultipleRoutes(isSilent);
+                this.renderCustomRouteInfo(route, isSilent);
+            }
 
-                const groupedSegments = [];
-                let currentGroup = null;
-
-                pathSegments.forEach(seg => {
-                    let displayType = (seg.type === 'mobil' || seg.type === 'motor') ? 'kendaraan' : 'jalan_kaki';
-                    if (this.state.transportMode === 'jalan_kaki') displayType = 'jalan_kaki';
-
-                    if (!currentGroup || currentGroup.type !== displayType) {
-                        currentGroup = { type: displayType, coords: [seg.start, seg.end] };
-                        groupedSegments.push(currentGroup);
-                    } else {
-                        currentGroup.coords.push(seg.end);
-                    }
+            drawMultipleRoutes(isSilent = false) {
+                if (isSilent) this.clearRouteLayers(); 
+                const allCoords = [];
+                
+                this.state.availableRoutes.forEach((route, idx) => {
+                    if (idx === this.state.selectedRouteIndex) return; 
+                    const coords = route.segments.map(seg => seg.start); coords.push(route.segments[route.segments.length-1].end);
+                    const l = L.polyline(coords, { color: '#9ca3af', weight: 8, opacity: 0.7, lineJoin: 'round' }).addTo(this.state.map);
+                    this.state.routeLayers.push(l);
                 });
 
-                const allCoords = [];
+                const selectedRoute = this.state.availableRoutes[this.state.selectedRouteIndex];
+                const groupedSegments = []; let currentGroup = null;
+
+                selectedRoute.segments.forEach(seg => {
+                    let displayType = (seg.type === 'mobil' || seg.type === 'motor') ? 'kendaraan' : 'jalan_kaki';
+                    if (this.state.transportMode === 'jalan_kaki') displayType = 'jalan_kaki';
+                    if (!currentGroup || currentGroup.type !== displayType) {
+                        currentGroup = { type: displayType, coords: [seg.start, seg.end] }; groupedSegments.push(currentGroup);
+                    } else currentGroup.coords.push(seg.end);
+                });
+
                 groupedSegments.forEach(group => {
                     allCoords.push(...group.coords);
-                    
                     if (group.type === 'kendaraan') {
                         const l1 = L.polyline(group.coords, { color: '#0e3160', weight: 14, opacity: 0.8, lineJoin: 'round', lineCap: 'round' }).addTo(this.state.map);
                         const l2 = L.polyline(group.coords, { color: '#facc15', weight: 8, opacity: 1, lineJoin: 'round', lineCap: 'round' }).addTo(this.state.map);
@@ -1004,78 +1040,67 @@
                 }
 
                 if (allCoords.length > 0 && !isSilent && !this.state.isNavigating) {
-                    const isDesktop = window.innerWidth >= 768;
-                    this.state.map.fitBounds(L.latLngBounds(allCoords), { 
-                        paddingTopLeft: [50, 50],
-                        paddingBottomRight: isDesktop ? [50, 400] : [50, 300] 
-                    });
+                    this.state.map.fitBounds(L.latLngBounds(allCoords), { paddingTopLeft: [50, 50], paddingBottomRight: window.innerWidth >= 768 ? [50, 400] : [50, 300] });
                 }
             }
 
-            clearRouteLayers() {
-                this.state.routeLayers.forEach(layer => this.state.map.removeLayer(layer));
-                this.state.routeLayers = [];
-            }
+            clearRouteLayers() { this.state.routeLayers.forEach(layer => this.state.map.removeLayer(layer)); this.state.routeLayers = []; }
 
-            renderCustomRouteInfo(pathSegments, isSilent = false) {
-                let distKendaraan = 0;
-                let distJalanKaki = 0;
+            renderCustomRouteInfo(routeData, isSilent = false) {
+                const totalDistMeters = routeData.totalDist; const timeMinutes = routeData.timeMinutes;
+                this.state.initialRouteDistance = totalDistMeters;
 
-                pathSegments.forEach(seg => {
-                    const p1 = turf.point([seg.start[1], seg.start[0]]);
-                    const p2 = turf.point([seg.end[1], seg.end[0]]);
-                    const d = turf.distance(p1, p2, {units: 'meters'});
-                    
-                    if ((seg.type === 'mobil' || seg.type === 'motor') && this.state.transportMode !== 'jalan_kaki') {
-                        distKendaraan += d;
-                    } else {
-                        distJalanKaki += d;
-                    }
-                });
-
-                const totalDistMeters = Math.round(distKendaraan + distJalanKaki);
-                const timeSecs = (distKendaraan / 5.5) + (distJalanKaki / 1.4);
-                const timeMinutes = Math.ceil(timeSecs / 60) || 1;
-
-                const arrivalTime = new Date();
-                arrivalTime.setMinutes(arrivalTime.getMinutes() + timeMinutes);
+                const arrivalTime = new Date(); arrivalTime.setMinutes(arrivalTime.getMinutes() + timeMinutes);
                 const timeString = arrivalTime.getHours().toString().padStart(2, '0') + ':' + arrivalTime.getMinutes().toString().padStart(2, '0');
 
-                this.DOM.sheetMeta.innerHTML = `<span class="text-[#15803d] font-black text-lg">${timeMinutes} mnt</span> <span class="text-gray-500 font-medium text-sm">(${totalDistMeters} m)</span> <span class="mx-1 text-gray-300">•</span> <span class="text-[#0e3160] font-bold text-sm">Tiba ${timeString}</span>`;
+                this.DOM.sheetMeta.innerHTML = '';
+                const spanTime = document.createElement('span'); spanTime.className = 'text-[#15803d] font-black text-lg'; spanTime.textContent = `${timeMinutes} mnt`;
+                const spanDist = document.createElement('span'); spanDist.className = 'text-gray-500 font-medium text-sm'; spanDist.textContent = ` (${totalDistMeters} m)`;
+                const spanDot = document.createElement('span'); spanDot.className = 'mx-1 text-gray-300'; spanDot.textContent = '•';
+                const spanArrival = document.createElement('span'); spanArrival.className = 'text-[#0e3160] font-bold text-sm'; spanArrival.textContent = ` Tiba ${timeString}`;
+                
+                this.DOM.sheetMeta.append(spanTime, spanDist, spanDot, spanArrival);
                 this.DOM.topDistance.textContent = `Sisa jarak: ${totalDistMeters} m`;
 
                 if (!isSilent) {
-                    this.DOM.sheetTitle.textContent = this.state.currentTarget.name;
-                    let instructionHTML = '';
-                    if (this.state.currentParking && distKendaraan > 0) {
-                        instructionHTML = `
-                            <div class="flex gap-4 items-start py-3 border-b border-gray-100 animate-fade-in-up" style="animation-delay: 100ms">
-                                <div class="mt-1 text-[#facc15] bg-[#0e3160] rounded-full p-1.5 shadow-sm"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg></div>
-                                <div>
-                                    <p class="text-sm font-bold text-[#0e3160]">Berkendara ke ${this.state.currentParking.name}</p>
-                                    <p class="text-xs text-gray-500 mt-0.5">Ikuti jalur kuning sejauh ${Math.round(distKendaraan)} meter</p>
-                                </div>
-                            </div>
-                            <div class="flex gap-4 items-start py-3 border-b border-gray-100 animate-fade-in-up" style="animation-delay: 200ms">
-                                <div class="mt-1 text-white bg-[#15803d] rounded-full p-1.5 shadow-sm"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg></div>
-                                <div>
-                                    <p class="text-sm font-bold text-[#0e3160]">Parkir, lalu jalan kaki ke Gedung</p>
-                                    <p class="text-xs text-gray-500 mt-0.5">Menuju ${this.state.currentTarget.name} sejauh ${Math.round(distJalanKaki)} meter</p>
-                                </div>
-                            </div>`;
-                        this.DOM.topInstruction.textContent = `Arahkan ke Parkiran`;
-                    } else {
-                        instructionHTML = `
-                            <div class="flex gap-4 items-start py-3 border-b border-gray-100 animate-fade-in-up">
-                                <div class="mt-1 text-white bg-[#15803d] rounded-full p-1.5 shadow-sm"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg></div>
-                                <div>
-                                    <p class="text-sm font-bold text-[#0e3160]">Jalan kaki di jalur hijau</p>
-                                    <p class="text-xs text-gray-500 mt-0.5">Menuju ${this.state.currentTarget.name} sejauh ${Math.round(distJalanKaki)} meter</p>
-                                </div>
-                            </div>`;
-                        this.DOM.topInstruction.textContent = `Jalan menuju tujuan`;
+                    const safeName = this.state.currentTarget.name; this.DOM.sheetTitle.textContent = safeName;
+                    
+                    this.DOM.routeOptionsContainer.innerHTML = '';
+                    if (this.state.availableRoutes.length > 1) {
+                        this.state.availableRoutes.forEach((altRoute, idx) => {
+                            const btn = document.createElement('button');
+                            btn.className = `route-chip ${idx === this.state.selectedRouteIndex ? 'active' : ''}`;
+                            btn.textContent = `${altRoute.name} (${altRoute.timeMinutes} mnt)`;
+                            btn.addEventListener('click', () => this.selectRoute(idx, true)); 
+                            this.DOM.routeOptionsContainer.appendChild(btn);
+                        });
                     }
-                    this.DOM.instruksiList.innerHTML = instructionHTML;
+
+                    this.DOM.instruksiList.innerHTML = ''; 
+                    const createInstructionItem = (iconBg, iconSvg, titleText, descText, delayClass = '') => {
+                        const item = document.createElement('div'); item.className = `flex gap-4 items-start py-3 border-b border-gray-100 animate-fade-in-up`;
+                        if (delayClass) item.style.animationDelay = delayClass;
+                        const iconDiv = document.createElement('div'); iconDiv.className = `mt-1 ${iconBg} rounded-full p-1.5 shadow-sm`; iconDiv.innerHTML = iconSvg; 
+                        const textDiv = document.createElement('div');
+                        const pTitle = document.createElement('p'); pTitle.className = 'text-sm font-bold text-[#0e3160]'; pTitle.textContent = titleText;
+                        const pDesc = document.createElement('p'); pDesc.className = 'text-xs text-gray-500 mt-0.5'; pDesc.textContent = descText;
+                        textDiv.append(pTitle, pDesc); item.append(iconDiv, textDiv); return item;
+                    };
+                    
+                    if (routeData.parking && routeData.distK > 0) {
+                        const parkName = routeData.parking.name;
+                        const carSvg = `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>`;
+                        const walkSvg = `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>`;
+                        
+                        const step1 = createInstructionItem('text-[#facc15] bg-[#0e3160]', carSvg, `Berkendara ke ${parkName}`, `Ikuti jalur kuning sejauh ${Math.round(routeData.distK)} meter`, '100ms');
+                        const step2 = createInstructionItem('text-white bg-[#15803d]', walkSvg, `Parkir, lalu jalan kaki ke Gedung`, `Menuju ${safeName} sejauh ${Math.round(routeData.distJ)} meter`, '200ms');
+                        
+                        this.DOM.instruksiList.append(step1, step2); this.DOM.topInstruction.textContent = `Arahkan ke Parkiran`;
+                    } else {
+                        const walkSvg = `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>`;
+                        const step1 = createInstructionItem('text-white bg-[#15803d]', walkSvg, `Jalan kaki di jalur hijau`, `Menuju ${safeName} sejauh ${Math.round(routeData.distJ)} meter`);
+                        this.DOM.instruksiList.appendChild(step1); this.DOM.topInstruction.textContent = `Jalan menuju tujuan`;
+                    }
                 }
             }
 
@@ -1086,31 +1111,58 @@
                 const targetPt = turf.point([this.state.currentTarget.lng, this.state.currentTarget.lat]);
                 const distToTarget = turf.distance(userPt, targetPt, {units: 'meters'});
 
-                // 1. Cek Sampai Tujuan
                 if (distToTarget <= 15) {
                     this.speak(`Anda telah sampai di ${this.state.currentTarget.name}. Navigasi diakhiri.`);
                     this.stopNavigation();
                     return;
                 }
                 
-                // FITUR BARU: Cek Instruksi Belokan Terdekat
+                let initialDist = this.state.initialRouteDistance;
+                if (!initialDist || distToTarget > initialDist) { this.state.initialRouteDistance = distToTarget; initialDist = distToTarget; }
+                
+                let travelled = initialDist - distToTarget;
+                let progress = Math.max(0, Math.min(100, (travelled / initialDist) * 100)); 
+                let speed = this.state.transportMode === 'jalan_kaki' ? 1.4 : 5.5; 
+                let etaMinutes = Math.ceil((distToTarget / speed) / 60);
+                let distDisplay = distToTarget >= 1000 ? (distToTarget/1000).toFixed(1) + ' km' : Math.round(distToTarget) + ' m';
+                
+                if (this.DOM.topDistance && this.DOM.navProgressBar) {
+                    this.DOM.topDistance.textContent = `${etaMinutes} menit • ${distDisplay} (${Math.round(progress)}%)`;
+                    this.DOM.navProgressBar.style.width = `${progress}%`;
+                }
+
+                let nextTurnFound = false; let turnIconText = '⬆️'; let arInstText = 'Lurus Terus';
                 if (this.state.turnInstructions.length > 0) {
-                    const nextTurn = this.state.turnInstructions.find(t => !t.announced);
-                    if (nextTurn) {
-                        const distToTurn = turf.distance(userPt, turf.point([nextTurn.coord[1], nextTurn.coord[0]]), {units:'meters'});
-                        if (distToTurn < 15) { // Jika kurang dari 15 meter dari belokan
-                            this.speak(`Persiapkan diri, belok ${nextTurn.type} di depan.`);
-                            nextTurn.announced = true;
+                    let upcomingTurn = this.state.turnInstructions.find(t => !t.passed);
+                    if (upcomingTurn) {
+                        const distToTurn = turf.distance(userPt, turf.point([upcomingTurn.coord[1], upcomingTurn.coord[0]]), {units:'meters'});
+                        
+                        if (distToTurn < 10) upcomingTurn.passed = true; 
+                        else {
+                            this.DOM.topInstruction.textContent = `Belok ${upcomingTurn.type} dalam ${Math.round(distToTurn)} meter`;
+                            arInstText = `Belok ${upcomingTurn.type} di depan`;
+                            nextTurnFound = true;
+                            if (upcomingTurn.type === 'kiri') turnIconText = '⬅️'; else if (upcomingTurn.type === 'kanan') turnIconText = '➡️';
+                            
+                            if (distToTurn <= 25 && !upcomingTurn.announced) { 
+                                this.speak(`Persiapkan diri, belok ${upcomingTurn.type} dalam ${Math.round(distToTurn)} meter.`);
+                                upcomingTurn.announced = true;
+                            }
                         }
                     }
                 }
 
-                // 2. Cek Off-Route
+                if (!nextTurnFound) { this.DOM.topInstruction.textContent = `Terus lurus menuju tujuan`; }
+                if (this.DOM.navTurnIcon) this.DOM.navTurnIcon.textContent = turnIconText;
+                
+                // [FITUR BARU 7] Update Teks AR View
+                if (this.state.isARMode) {
+                    this.DOM.arInstruction.textContent = arInstText;
+                    this.DOM.arDist.textContent = distDisplay;
+                }
+
                 const routeCoords = [];
-                this.state.currentRouteSegments.forEach(seg => {
-                    routeCoords.push([seg.start[1], seg.start[0]]);
-                    routeCoords.push([seg.end[1], seg.end[0]]);
-                });
+                this.state.currentRouteSegments.forEach(seg => { routeCoords.push([seg.start[1], seg.start[0]]); routeCoords.push([seg.end[1], seg.end[0]]); });
 
                 if (routeCoords.length >= 2) {
                     const routeLine = turf.lineString(routeCoords);
@@ -1120,38 +1172,22 @@
                         const now = Date.now();
                         if (now - this.state.lastOffRouteWarn > 15000) {
                             this.speak("Anda keluar dari jalur. Rute sedang dihitung ulang.");
-                            
                             this.DOM.topInstruction.textContent = "Menghitung ulang rute...";
                             this.DOM.topInstruction.classList.add('text-red-300');
-                            setTimeout(() => {
-                                this.DOM.topInstruction.classList.remove('text-red-300');
-                                this.DOM.topInstruction.textContent = `Jalan menuju tujuan`;
-                            }, 4000);
-                            
-                            this.state.lastOffRouteWarn = now;
+                            setTimeout(() => { this.DOM.topInstruction.classList.remove('text-red-300'); }, 4000);
+                            this.state.lastOffRouteWarn = now; this.state.needsRecalculation = true; 
                         }
                     }
                 }
             }
 
             getHeadingTarget(currentPos) {
-                if (!this.state.currentRouteSegments || this.state.currentRouteSegments.length === 0) {
-                    return [this.state.currentTarget.lat, this.state.currentTarget.lng];
-                }
-                
+                if (!this.state.currentRouteSegments || this.state.currentRouteSegments.length === 0) return [this.state.currentTarget.lat, this.state.currentTarget.lng];
                 let targetPos = this.state.currentRouteSegments[0].end;
                 for (let i = 0; i < this.state.currentRouteSegments.length; i++) {
                     const segEnd = this.state.currentRouteSegments[i].end;
-                    const dist = turf.distance(
-                        turf.point([currentPos[1], currentPos[0]]), 
-                        turf.point([segEnd[1], segEnd[0]]), 
-                        {units: 'meters'}
-                    );
-                    
-                    if (dist > 5) { 
-                        targetPos = segEnd;
-                        break;
-                    }
+                    const dist = turf.distance( turf.point([currentPos[1], currentPos[0]]), turf.point([segEnd[1], segEnd[0]]), {units: 'meters'} );
+                    if (dist > 5) { targetPos = segEnd; break; }
                     targetPos = segEnd;
                 }
                 return targetPos;
@@ -1159,11 +1195,8 @@
 
             updateMapHeading(startPos, endPos) {
                 if (!this.state.isNavigating) return;
-
-                const toRad = deg => deg * Math.PI / 180;
-                const toDeg = rad => rad * 180 / Math.PI;
-                const lat1 = toRad(startPos[0]), lng1 = toRad(startPos[1]);
-                const lat2 = toRad(endPos[0]), lng2 = toRad(endPos[1]);
+                const toRad = deg => deg * Math.PI / 180; const toDeg = rad => rad * 180 / Math.PI;
+                const lat1 = toRad(startPos[0]), lng1 = toRad(startPos[1]); const lat2 = toRad(endPos[0]), lng2 = toRad(endPos[1]);
                 const dLng = lng2 - lng1;
 
                 const y = Math.sin(dLng) * Math.cos(lat2);
@@ -1175,11 +1208,7 @@
                 this.state.currentHeading += diff;
 
                 document.documentElement.style.setProperty('--map-heading', `-${this.state.currentHeading}deg`);
-                
-                setTimeout(() => {
-                    const arrowSvg = document.querySelector('.nav-arrow-svg');
-                    if (arrowSvg) arrowSvg.style.transform = `rotateZ(${this.state.currentHeading}deg)`;
-                }, 50);
+                setTimeout(() => { const arrowSvg = document.querySelector('.nav-arrow-svg'); if (arrowSvg) arrowSvg.style.transform = `rotateZ(${this.state.currentHeading}deg)`; }, 50);
             }
 
             startNavigation() {
@@ -1201,7 +1230,8 @@
                 this.updateMapHeading(actualStartPos, targetPos);
                 this.state.map.flyTo(actualStartPos, 21, { animate: true, duration: 1.5, easeLinearity: 0.25 });
                 
-                const textMsg = this.state.isManualStart ? `Simulasi rute ke ${this.state.currentTarget.name} dimulai.` : `Navigasi dimulai. Silakan ikuti jalur di peta.`;
+                const safeTargetName = Utils.escapeHTML(this.state.currentTarget.name);
+                const textMsg = this.state.isManualStart ? `Simulasi rute ke ${safeTargetName} dimulai.` : `Navigasi dimulai. Silakan ikuti jalur di peta.`;
                 this.speak(textMsg);
             }
 
@@ -1209,15 +1239,25 @@
                 this.state.isNavigating = false;
                 this.DOM.body.classList.remove('is-navigating');
                 this.updateSheetState('closed');
-                this.DOM.selectTujuan.value = "";
+                this.DOM.inputSearchTujuan.value = "";
                 this.state.currentTarget = null;
                 this.state.turnInstructions = [];
+                this.state.needsRecalculation = false;
+                this.state.availableRoutes = []; 
                 
                 this.state.isCameraLocked = true;
                 this.DOM.btnRecenter.classList.add('hidden');
                 this.DOM.btnRecenter.classList.remove('flex');
                 
+                this.DOM.topInstruction.textContent = "Mencari rute...";
+                this.DOM.topDistance.textContent = "--";
+                if (this.DOM.navProgressBar) this.DOM.navProgressBar.style.width = "0%";
+                if (this.DOM.navTurnIcon) this.DOM.navTurnIcon.textContent = "⬆️"; 
+
                 this.clearRouteLayers();
+                if (this.state.isARMode) this.stopAR();
+                
+                if (this.watchId) { navigator.geolocation.clearWatch(this.watchId); this.watchId = null; }
                 
                 let snapNorth = Math.round(this.state.currentHeading / 360) * 360;
                 this.state.currentHeading = snapNorth;
@@ -1225,61 +1265,64 @@
 
                 this.state.userMarker.setIcon(this.icons.idle);
                 
-                const actualStartPos = this.state.isManualStart ? [this.state.manualStartTarget.lat, this.state.manualStartTarget.lng] : this.PUSAT_KAWASAN;
+                const actualStartPos = this.state.isManualStart ? [this.state.manualStartTarget.lat, this.state.manualStartTarget.lng] : this.DATA.PUSAT_KAWASAN;
                 this.state.map.flyTo(actualStartPos, 20, { animate: true, duration: 1.5 }); 
                 
                 if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+                
+                if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition((pos) => {
+                        const p = [pos.coords.latitude, pos.coords.longitude];
+                        this.state.userPos = p; this.state.userMarker.setLatLng(p);
+                    }, () => {}, { enableHighAccuracy: true, maximumAge: 30000 });
+                }
             }
 
             updateSheetState(newState) {
                 this.state.sheetState = newState;
                 this.DOM.sheet.classList.remove('sheet-active', 'sheet-minimized');
-                if (newState === 'active') {
-                    this.DOM.sheet.classList.add('sheet-active');
-                } else if (newState === 'minimized') {
-                    this.DOM.sheet.classList.add('sheet-minimized');
-                }
+                if (newState === 'active') this.DOM.sheet.classList.add('sheet-active');
+                else if (newState === 'minimized') this.DOM.sheet.classList.add('sheet-minimized');
             }
 
             requestGeolocation() {
-                if (!navigator.geolocation) {
-                    this.showToast("GPS tidak didukung oleh browser Anda.");
-                    return;
-                }
-
+                if (!navigator.geolocation) { this.showToast("GPS tidak didukung oleh browser Anda."); return; }
                 const options = { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 };
+
+                if (this.watchId) navigator.geolocation.clearWatch(this.watchId);
 
                 navigator.geolocation.getCurrentPosition(
                     (pos) => {
                         const newPos = [pos.coords.latitude, pos.coords.longitude];
                         this.state.userPos = newPos;
-                        if (!this.state.isManualStart) {
-                            this.state.userMarker.setLatLng(newPos);
-                        }
-                        this.DOM.btnLocation.classList.add('text-[#1a73e8]');
-                        this.DOM.btnLocation.classList.remove('text-red-500');
+                        if (!this.state.isManualStart) this.state.userMarker.setLatLng(newPos);
+                        this.DOM.btnLocation.classList.add('text-[#1a73e8]'); this.DOM.btnLocation.classList.remove('text-red-500');
                     },
                     (err) => {
-                        if(err.code === 1) {
-                            this.showToast("Akses GPS diblokir. Gunakan pilihan lokasi manual di atas.", "error");
-                        }
-                        this.DOM.btnLocation.classList.remove('text-[#1a73e8]');
-                        this.DOM.btnLocation.classList.add('text-red-500');
-                    },
-                    options
+                        if(err.code === 1) this.showToast("Akses GPS diblokir. Gunakan pilihan lokasi manual di atas.", "error");
+                        this.DOM.btnLocation.classList.remove('text-[#1a73e8]'); this.DOM.btnLocation.classList.add('text-red-500');
+                    }, options
                 );
 
                 this.watchId = navigator.geolocation.watchPosition(
                     (pos) => {
-                        const newPos = [pos.coords.latitude, pos.coords.longitude];
-                        this.state.userPos = newPos;
+                        let newPos = [pos.coords.latitude, pos.coords.longitude];
                         
-                        if (!this.state.isManualStart) {
-                            this.state.userMarker.setLatLng(newPos);
+                        if (this.state.isNavigating && this.state.currentRouteSegments.length > 0) {
+                            try {
+                                const routeCoords = [];
+                                this.state.currentRouteSegments.forEach(seg => { routeCoords.push([seg.start[1], seg.start[0]]); });
+                                routeCoords.push([this.state.currentRouteSegments[this.state.currentRouteSegments.length-1].end[1], this.state.currentRouteSegments[this.state.currentRouteSegments.length-1].end[0]]);
+                                const routeLine = turf.lineString(routeCoords);
+                                const userPt = turf.point([newPos[1], newPos[0]]);
+                                const snapped = turf.nearestPointOnLine(routeLine, userPt, {units: 'meters'});
+                                if (snapped.properties.dist < 15) newPos = [snapped.geometry.coordinates[1], snapped.geometry.coordinates[0]];
+                            } catch(e) { console.warn('Map Matching skipped:', e); }
                         }
-                        
-                        this.DOM.btnLocation.classList.add('text-[#1a73e8]');
-                        this.DOM.btnLocation.classList.remove('text-red-500');
+
+                        this.state.userPos = newPos;
+                        if (!this.state.isManualStart) this.state.userMarker.setLatLng(newPos);
+                        this.DOM.btnLocation.classList.add('text-[#1a73e8]'); this.DOM.btnLocation.classList.remove('text-red-500');
                         
                         if (this.state.isNavigating && this.state.currentTarget && !this.state.isManualStart) {
                             if (this.state.isCameraLocked) {
@@ -1287,67 +1330,37 @@
                                 let targetPos = this.getHeadingTarget(newPos);
                                 this.updateMapHeading(newPos, targetPos);
                             }
-                            this.checkRouteStatus(newPos);
-                            this.calculateCustomRoute(true); 
+                            this.checkRouteStatus(newPos); 
+                            if(this.state.needsRecalculation) { this.calculateCustomRouteThrottled(true); this.state.needsRecalculation = false; }
                         }
                     },
-                    (err) => {
-                        this.DOM.btnLocation.classList.remove('text-[#1a73e8]');
-                        this.DOM.btnLocation.classList.add('text-red-500');
-                    },
+                    (err) => { this.DOM.btnLocation.classList.remove('text-[#1a73e8]'); this.DOM.btnLocation.classList.add('text-red-500'); },
                     options
                 );
             }
 
             focusUserLocation() { 
-                // Minta izin Kompas tiap kali tombol GPS diklik
                 this.requestDeviceOrientation();
-
                 if (this.state.isManualStart) {
                     this.state.map.flyTo([this.state.manualStartTarget.lat, this.state.manualStartTarget.lng], 20, { animate: true, duration: 1 });
                     return;
                 }
-
                 this.showToast("Mencari sinyal GPS...", "success");
-                
                 navigator.geolocation.getCurrentPosition(
                     (pos) => {
                         const newPos = [pos.coords.latitude, pos.coords.longitude];
-                        this.state.userPos = newPos;
-                        this.state.userMarker.setLatLng(newPos);
+                        this.state.userPos = newPos; this.state.userMarker.setLatLng(newPos);
                         this.state.map.flyTo(newPos, 20, { animate: true, duration: 1 });
-                        
                         if(this.state.isNavigating && !this.state.isManualStart) this.calculateCustomRoute(true);
                     },
                     (err) => {
-                        if(err.code === 1) {
-                            this.showToast("Izin GPS ditolak oleh Browser.", "error");
-                        } else {
-                            this.showToast("Gagal mendapat sinyal GPS.", "error");
-                        }
-                    },
-                    { enableHighAccuracy: true }
+                        if(err.code === 1) this.showToast("Izin GPS ditolak oleh Browser.", "error"); else this.showToast("Gagal mendapat sinyal GPS.", "error");
+                    }, { enableHighAccuracy: true }
                 );
             }
-
-            speak(text) { 
-                if ('speechSynthesis' in window) { 
-                    try { 
-                        window.speechSynthesis.cancel(); 
-                        const msg = new SpeechSynthesisUtterance(text); 
-                        msg.lang = 'id-ID'; 
-                        msg.rate = 1.0;
-                        msg.pitch = 1.0;
-                        window.speechSynthesis.speak(msg); 
-                    } catch (e) {
-                        console.error("Speech error", e);
-                    } 
-                } 
-            }
-            escapeHTML(str) { const div = document.createElement('div'); div.textContent = str; return div.innerHTML; }
         }
 
-        document.addEventListener('DOMContentLoaded', () => { window.puprApp = new PuprNavigationApp(); });
+        document.addEventListener('DOMContentLoaded', () => { window.puprApp = new PuprNavigationApp(APP_DATA); });
     </script>
 </body>
 </html>
